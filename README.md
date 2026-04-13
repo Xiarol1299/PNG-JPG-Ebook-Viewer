@@ -12,6 +12,10 @@ It's easy, just download the Python file and run it, and you're done (obviously,
 
 2) View images as if they were a digital book.
 
+3) It save the page when you exit from the app or from one book and, when you re-enter in the same book, the app re-open in the same page
+
+4) Dual page visualization
+
 # Requirements
 
 1) Python
