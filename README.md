@@ -16,6 +16,8 @@ It's easy, just download the Python file and run it, and you're done (obviously,
 
 4) Dual page visualization
 
+5) Dark mode(default) / Light mode
+
 # Requirements
 
 1) Python
