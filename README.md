@@ -5,7 +5,8 @@ Since I'm so tired of all the different apps for every digital book I have (for 
 
 # HOW IT WORKS
 
-It's easy, just download the [.exe file from the release](https://github.com/Xiarol1299/PNG-JPG-Ebook-Viewer/releases) and run it, and you're done (obviously, you'll also need to download the necessary libraries; they're listed at the bottom of the requirements).
+It's easy, just download the [.exe file from the release](https://github.com/Xiarol1299/PNG-JPG-Ebook-Viewer/releases) and run it, and you're done 
+(obviously for the .py file, you'll also need to download the necessary libraries; they're listed at the bottom of the requirements).
 
 # What you can do:
 1) Write and underline WITH YOUR PEN (I've created a highly optimized system that works great and saves what you write in the original image).
@@ -18,7 +19,7 @@ It's easy, just download the [.exe file from the release](https://github.com/Xia
 
 5) Dark mode(default) / Light mode
 
-# Requirements
+# Requirements (only for the .py file)
 
 1) Python
 2) Library: PyQt6 (pip install PyQt6)
