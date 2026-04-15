@@ -137,13 +137,11 @@ class DialogoImpostazioniApp(QDialog):
 
         layout = QVBoxLayout(self)
 
-        # Bottone Tema
         testo_tema = "Passa a Modalità Chiara ☀️" if self.main_app.is_tema_scuro else "Passa a Modalità Scura 🌙"
         self.btn_tema = QPushButton(testo_tema)
         self.btn_tema.clicked.connect(self.cambia_tema)
         layout.addWidget(self.btn_tema)
 
-        # Selezione Cartella
         layout.addWidget(QLabel("Cartella della tua Libreria:"))
         
         layout_cartella = QHBoxLayout()
@@ -177,7 +175,7 @@ class DialogoImpostazioniApp(QDialog):
             self.lbl_cartella.setText(nuova_cartella)
             self.main_app.cartella_principale = nuova_cartella
             self.main_app.salva_config()
-            self.main_app.popola_libreria() # Aggiorna istantaneamente la griglia home
+            self.main_app.popola_libreria()
 
 # --- BOTTONE DOPPIO CLIC ---
 class BottoneStrumento(QPushButton):
@@ -186,7 +184,7 @@ class BottoneStrumento(QPushButton):
         self.doppio_clic.emit()
         super().mouseDoubleClickEvent(evento)
 
-# --- VISUALIZZATORE VETTORIALE ---
+# --- VISUALIZZATORE VETTORIALE (OTTIMIZZATO PER BATTERIA) ---
 class PaginaView(QGraphicsView):
     richiesta_toggle_strumento = pyqtSignal()
     richiesta_cambio_pagina = pyqtSignal(int)
@@ -195,6 +193,13 @@ class PaginaView(QGraphicsView):
         super().__init__()
         self.scena = QGraphicsScene()
         self.setScene(self.scena)
+        
+        # --- OTTIMIZZAZIONI RISPARMIO ENERGETICO ---
+        # MinimalViewportUpdate aggiorna SOLO i pixel che cambiano (es. la punta della penna), non tutto lo schermo
+        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.MinimalViewportUpdate)
+        self.setOptimizationFlag(QGraphicsView.OptimizationFlag.DontAdjustForAntialiasing, True)
+        self.setOptimizationFlag(QGraphicsView.OptimizationFlag.DontSavePainterState, True)
+        
         self.immagine_corrente = None
         self.item_sfondo = None
         self.percorso_corrente = ""
@@ -381,7 +386,6 @@ class AppLibri(QMainWindow):
         self.setWindowTitle("Il Mio Lettore Digitale")
         self.resize(1200, 800)
         
-        # Capisce se stai usando il .py normale o l' .exe compilato
         if getattr(sys, 'frozen', False):
             cartella_programma = os.path.dirname(sys.executable)
         else:
@@ -391,7 +395,6 @@ class AppLibri(QMainWindow):
         self.FILE_CONFIG = os.path.join(cartella_programma, "config.json")
         
         self.carica_config()
-        
         self.storico_pagine = {}
         self.carica_storico()
         
@@ -401,16 +404,17 @@ class AppLibri(QMainWindow):
         self.pagine_libro = []
         self.indice_pagina_attuale = 0
         self.vista_doppia = False
-        self.cache_pagine = {}
+        
+        self.cache_pagine = {}        
+        self.coda_precaricamento = [] 
 
         self.crea_menu()
         self.crea_lettore()
         self.applica_tema()
 
-    # --- LOGICA SALVATAGGIO STORICO E CONFIGURAZIONI ---
     def carica_config(self):
         self.cartella_principale = ""
-        self.is_tema_scuro = True # Default
+        self.is_tema_scuro = True
         try:
             with open(self.FILE_CONFIG, 'r') as f:
                 dati = json.load(f)
@@ -421,14 +425,10 @@ class AppLibri(QMainWindow):
 
     def salva_config(self):
         try:
-            dati = {
-                "cartella": self.cartella_principale,
-                "tema": self.is_tema_scuro
-            }
+            dati = {"cartella": self.cartella_principale, "tema": self.is_tema_scuro}
             with open(self.FILE_CONFIG, 'w') as f:
                 json.dump(dati, f)
-        except Exception as e:
-            print(f"Errore salvataggio config: {e}")
+        except: pass
 
     def carica_storico(self):
         try:
@@ -441,8 +441,7 @@ class AppLibri(QMainWindow):
         try:
             with open(self.FILE_STORICO, 'w') as f:
                 json.dump(self.storico_pagine, f)
-        except:
-            pass
+        except: pass
 
     def closeEvent(self, event):
         if hasattr(self, 'cartella_corrente') and self.cartella_corrente:
@@ -454,15 +453,13 @@ class AppLibri(QMainWindow):
 
     def keyPressEvent(self, evento):
         if self.schermate.currentIndex() == 1 and not self.input_pag.hasFocus():
-            if evento.key() == Qt.Key.Key_Right:
-                self.pagina_avanti()
-            elif evento.key() == Qt.Key.Key_Left:
-                self.pagina_indietro()
+            if evento.key() == Qt.Key.Key_Right: self.pagina_avanti()
+            elif evento.key() == Qt.Key.Key_Left: self.pagina_indietro()
         super().keyPressEvent(evento)
 
     def cambia_tema(self):
         self.is_tema_scuro = not self.is_tema_scuro
-        self.salva_config() # Salva subito la preferenza nel file json!
+        self.salva_config()
         self.applica_tema()
 
     def applica_tema(self):
@@ -505,7 +502,6 @@ class AppLibri(QMainWindow):
         layout_principale = QVBoxLayout(self.widget_menu)
 
         barra_superiore = QHBoxLayout()
-        # SOSTITUITO IL BOTTONE TEMA CON QUELLO IMPOSTAZIONI
         self.btn_impostazioni = QPushButton("⚙️ Impostazioni")
         self.btn_impostazioni.setFixedSize(140, 40)
         self.btn_impostazioni.clicked.connect(self.apri_impostazioni)
@@ -532,11 +528,9 @@ class AppLibri(QMainWindow):
         dialogo.exec()
 
     def popola_libreria(self):
-        # Prima puliamo la griglia in caso stiamo ricaricando dopo aver cambiato cartella
         for i in reversed(range(self.layout_griglia.count())): 
             widget = self.layout_griglia.itemAt(i).widget()
-            if widget is not None: 
-                widget.setParent(None)
+            if widget is not None: widget.setParent(None)
 
         if not self.cartella_principale or not os.path.exists(self.cartella_principale):
             self.lbl_caricamento.setText("Benvenuto! Vai in ⚙️ Impostazioni per selezionare la cartella dei tuoi libri.")
@@ -574,6 +568,7 @@ class AppLibri(QMainWindow):
         self.widget_lettore.setObjectName("sfondo_lettore")
         layout_principale = QVBoxLayout(self.widget_lettore)
         
+        # --- BARRA ALTA ---
         self.barra_alta = QHBoxLayout()
         self.btn_penna = BottoneStrumento("Penna")
         self.btn_penna.setCheckable(True)
@@ -591,25 +586,24 @@ class AppLibri(QMainWindow):
         self.btn_gomma.clicked.connect(lambda: self.imposta_strumento("gomma"))
         self.btn_gomma.doppio_clic.connect(self.imposta_gomma)
 
-        btn_menu = QPushButton("Torna al Menu")
-        btn_menu.setFixedSize(120, 40)
-        btn_menu.clicked.connect(self.torna_al_menu)
+        self.btn_menu = QPushButton("Torna al Menu")
+        self.btn_menu.setFixedSize(120, 40)
+        self.btn_menu.clicked.connect(self.torna_al_menu)
+
+        self.btn_exit_fs = QPushButton("Esci Full Screen")
+        self.btn_exit_fs.setFixedSize(140, 40)
+        self.btn_exit_fs.clicked.connect(self.toggle_fullscreen)
+        self.btn_exit_fs.hide()
 
         self.barra_alta.addWidget(self.btn_penna)
         self.barra_alta.addWidget(self.btn_evid)
         self.barra_alta.addWidget(self.btn_gomma)
         self.barra_alta.addStretch()
-        self.barra_alta.addWidget(btn_menu)
+        self.barra_alta.addWidget(self.btn_menu)
+        self.barra_alta.addWidget(self.btn_exit_fs)
 
+        # --- CENTRO ---
         centro = QHBoxLayout()
-        btn_indietro = QPushButton("<")
-        btn_indietro.setFixedSize(40, 100)
-        btn_indietro.clicked.connect(self.pagina_indietro)
-        
-        btn_avanti = QPushButton(">")
-        btn_avanti.setFixedSize(40, 100)
-        btn_avanti.clicked.connect(self.pagina_avanti)
-
         self.vista_sx = PaginaView()
         self.vista_dx = PaginaView()
         self.vista_dx.hide()
@@ -619,14 +613,21 @@ class AppLibri(QMainWindow):
         self.vista_sx.richiesta_toggle_strumento.connect(self.toggle_penna_evid)
         self.vista_dx.richiesta_toggle_strumento.connect(self.toggle_penna_evid)
         
-        centro.addWidget(btn_indietro)
         centro.addWidget(self.vista_sx)
         centro.addWidget(self.vista_dx)
-        centro.addWidget(btn_avanti)
 
+        # --- BARRA BASSA (Con Frecce) ---
         self.widget_basso = QWidget()
         self.barra_bassa = QHBoxLayout(self.widget_basso)
         
+        btn_indietro = QPushButton("<")
+        btn_indietro.setFixedSize(40, 40)
+        btn_indietro.clicked.connect(self.pagina_indietro)
+        
+        btn_avanti = QPushButton(">")
+        btn_avanti.setFixedSize(40, 40)
+        btn_avanti.clicked.connect(self.pagina_avanti)
+
         self.input_pag = QLineEdit()
         self.input_pag.setFixedWidth(80)
         self.input_pag.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -636,16 +637,26 @@ class AppLibri(QMainWindow):
         btn_toggle_vista.clicked.connect(self.cambia_vista)
         
         self.barra_bassa.addStretch()
+        self.barra_bassa.addWidget(btn_indietro)
         self.barra_bassa.addWidget(self.input_pag)
         self.barra_bassa.addWidget(btn_toggle_vista)
+        self.barra_bassa.addWidget(btn_avanti)
         self.barra_bassa.addStretch()
 
+        # --- ANGOLO BASSO DESTRA ---
         layout_nascondi = QHBoxLayout()
         layout_nascondi.addStretch()
-        btn_nascondi = QPushButton("O")
-        btn_nascondi.setFixedSize(40, 40)
-        btn_nascondi.clicked.connect(self.toggle_interfaccia_bassa)
-        layout_nascondi.addWidget(btn_nascondi)
+        
+        self.btn_nascondi = QPushButton("O")
+        self.btn_nascondi.setFixedSize(40, 40)
+        self.btn_nascondi.clicked.connect(self.toggle_interfaccia_bassa)
+        
+        self.btn_fullscreen = QPushButton("[ ]")
+        self.btn_fullscreen.setFixedSize(40, 40)
+        self.btn_fullscreen.clicked.connect(self.toggle_fullscreen)
+        
+        layout_nascondi.addWidget(self.btn_nascondi)
+        layout_nascondi.addWidget(self.btn_fullscreen)
 
         layout_principale.addLayout(self.barra_alta)
         layout_principale.addLayout(centro)
@@ -654,6 +665,22 @@ class AppLibri(QMainWindow):
 
         self.schermate.addWidget(self.widget_lettore)
 
+    def toggle_fullscreen(self):
+        if self.isFullScreen():
+            self.showMaximized()
+            self.btn_menu.show()
+            self.btn_exit_fs.hide()
+            self.widget_basso.show()
+            self.btn_nascondi.show()
+            self.btn_fullscreen.show()
+        else:
+            self.showFullScreen()
+            self.btn_menu.hide()
+            self.btn_exit_fs.show()
+            self.widget_basso.hide()
+            self.btn_nascondi.hide()
+            self.btn_fullscreen.hide()
+
     def gestisci_swipe(self, direzione):
         if direzione == 1: self.pagina_avanti()
         elif direzione == -1: self.pagina_indietro()
@@ -661,11 +688,7 @@ class AppLibri(QMainWindow):
     def ottieni_da_cache(self, percorso):
         if percorso not in self.cache_pagine:
             self.cache_pagine[percorso] = QPixmap(percorso)
-            if len(self.cache_pagine) > 40: del self.cache_pagine[next(iter(self.cache_pagine))]
         return self.cache_pagine[percorso]
-
-    def aggiorna_cache_forzato(self, percorso):
-        self.cache_pagine[percorso] = QPixmap(percorso)
 
     def apri_libro(self, percorso):
         immagini = [f for f in os.listdir(percorso) if f.lower().endswith(('.png', '.jpg', '.jpeg')) and not f.lower().startswith('copertina')]
@@ -681,9 +704,23 @@ class AppLibri(QMainWindow):
         self.schermate.setCurrentIndex(1)
         self.aggiorna_pagine()
 
+    def aggiorna_ram_se_modificate(self):
+        if self.vista_sx.modificata: 
+            self.vista_sx.salva_modifiche()
+            percorso_sx = self.vista_sx.percorso_corrente
+            if percorso_sx in self.cache_pagine: del self.cache_pagine[percorso_sx]
+            QPixmapCache.clear() 
+            self.cache_pagine[percorso_sx] = QPixmap(percorso_sx)
+            
+        if self.vista_dx.modificata: 
+            self.vista_dx.salva_modifiche()
+            percorso_dx = self.vista_dx.percorso_corrente
+            if percorso_dx in self.cache_pagine: del self.cache_pagine[percorso_dx]
+            QPixmapCache.clear()
+            self.cache_pagine[percorso_dx] = QPixmap(percorso_dx)
+
     def aggiorna_pagine(self):
         if not self.pagine_libro: return
-        QTimer.singleShot(10, self.precarica_pagine_vicine)
         
         if not self.vista_doppia:
             nome_file = self.pagine_libro[self.indice_pagina_attuale]
@@ -711,10 +748,33 @@ class AppLibri(QMainWindow):
                     self.vista_dx.carica_immagine(None, None)
                     self.input_pag.setText(numero_da_nome(self.pagine_libro[indice_sx]))
 
+        # OTTIMIZZAZIONE BATTERIA: Meno pagine, controllo più lento
+        QTimer.singleShot(50, self.precarica_pagine_vicine)
+
     def precarica_pagine_vicine(self):
-        inizio = max(0, self.indice_pagina_attuale - 2)
-        fine = min(len(self.pagine_libro), self.indice_pagina_attuale + 4)
-        for i in range(inizio, fine): self.ottieni_da_cache(os.path.join(self.cartella_corrente, self.pagine_libro[i]))
+        # Finestra di precaricamento ridotta a -3 / +5 per non affaticare CPU e batteria
+        inizio = max(0, self.indice_pagina_attuale - 3)
+        fine = min(len(self.pagine_libro), self.indice_pagina_attuale + 6)
+        
+        percorsi_utili = []
+        for i in range(inizio, fine):
+            percorsi_utili.append(os.path.join(self.cartella_corrente, self.pagine_libro[i]))
+            
+        da_cancellare = [p for p in self.cache_pagine if p not in percorsi_utili]
+        for p in da_cancellare:
+            del self.cache_pagine[p]
+            
+        self.coda_precaricamento = [p for p in percorsi_utili if p not in self.cache_pagine]
+        self.carica_prossima_in_coda()
+
+    def carica_prossima_in_coda(self):
+        if hasattr(self, 'coda_precaricamento') and self.coda_precaricamento:
+            percorso = self.coda_precaricamento.pop(0)
+            if percorso not in self.cache_pagine:
+                self.cache_pagine[percorso] = QPixmap(percorso)
+            
+            # Timer allungato a 50ms per far respirare il processore
+            QTimer.singleShot(50, self.carica_prossima_in_coda)
 
     def pagina_avanti(self):
         self.aggiorna_ram_se_modificate()
@@ -747,10 +807,6 @@ class AppLibri(QMainWindow):
         if self.vista_doppia: self.vista_dx.show()
         else: self.vista_dx.hide()
         self.aggiorna_pagine()
-
-    def aggiorna_ram_se_modificate(self):
-        if self.vista_sx.modificata: self.aggiorna_cache_forzato(self.vista_sx.percorso_corrente)
-        if self.vista_dx.modificata: self.aggiorna_cache_forzato(self.vista_dx.percorso_corrente)
 
     def toggle_interfaccia_bassa(self):
         self.widget_basso.setVisible(not self.widget_basso.isVisible())
@@ -788,11 +844,15 @@ class AppLibri(QMainWindow):
             self.vista_sx.spessore_gomma = self.vista_dx.spessore_gomma = dialogo.spessore
 
     def torna_al_menu(self):
+        self.aggiorna_ram_se_modificate()
         self.storico_pagine[self.cartella_corrente] = self.indice_pagina_attuale
         self.salva_storico()
         
-        self.vista_sx.salva_modifiche()
-        self.vista_dx.salva_modifiche()
+        self.cache_pagine.clear()
+        
+        if self.isFullScreen():
+            self.toggle_fullscreen()
+            
         self.schermate.setCurrentIndex(0)
 
 if __name__ == "__main__":
