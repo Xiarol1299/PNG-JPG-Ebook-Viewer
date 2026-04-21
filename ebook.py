@@ -225,9 +225,6 @@ class PaginaView(QGraphicsView):
         self.adattato_in_larghezza = False
         self.pos_mouse_iniziale = None
         self.scroll_x_iniziale = 0
-        
-        # Variabile per il trackpad
-        self.accumulo_swipe_x = 0
 
     def adatta_in_altezza(self):
         if self.immagine_corrente:
@@ -277,22 +274,28 @@ class PaginaView(QGraphicsView):
 
     def salva_modifiche(self):
         if self.modificata and self.immagine_corrente:
-            img = QImage(self.immagine_corrente.size(), QImage.Format.Format_RGB32)
+            # FIX PESO: Toglie la trasparenza (RGB888) e usa salvataggio compresso
+            img = QImage(self.immagine_corrente.size(), QImage.Format.Format_RGB888)
             img.fill(Qt.GlobalColor.white) 
             pittore = QPainter(img)
+            pittore.setRenderHint(QPainter.RenderHint.Antialiasing)
             self.scena.render(pittore, target=QRectF(img.rect()), source=QRectF(self.immagine_corrente.rect()))
             pittore.end()
             
+            def salva_compresso(immagine_da_salvare, percorso):
+                # Qualità al 100%: Visivamente perfetto, ma alleggerito enormemente!
+                immagine_da_salvare.save(percorso, "JPEG", 100)
+
             if self.is_doppia:
                 if self.percorso_sx:
                     img_sx = img.copy(0, 0, self.size_sx.width(), self.size_sx.height())
-                    img_sx.save(self.percorso_sx, quality=95)
+                    salva_compresso(img_sx, self.percorso_sx)
                 if self.percorso_dx:
                     img_dx = img.copy(self.size_sx.width(), 0, self.size_dx.width(), self.size_dx.height())
-                    img_dx.save(self.percorso_dx, quality=95)
+                    salva_compresso(img_dx, self.percorso_dx)
             else:
                 if self.percorso_sx:
-                    img.copy(0, 0, self.size_sx.width(), self.size_sx.height()).save(self.percorso_sx, quality=95)
+                    salva_compresso(img, self.percorso_sx)
             
             self.modificata = False
 
@@ -305,10 +308,9 @@ class PaginaView(QGraphicsView):
         penna.setWidthF(spessore)
         return penna
 
-    # MODIFICA 1: Ignora le freccette direzionali in questa View per farle gestire dal Main!
     def keyPressEvent(self, evento):
         if evento.key() in (Qt.Key.Key_Right, Qt.Key.Key_Left):
-            evento.ignore() # Passa l'evento al form principale AppLibri
+            evento.ignore() 
         else:
             super().keyPressEvent(evento)
 
@@ -343,41 +345,20 @@ class PaginaView(QGraphicsView):
     def mouseReleaseEvent(self, evento):
         if self.pos_mouse_iniziale is not None:
             delta_x = evento.pos().x() - self.pos_mouse_iniziale.x()
+            delta_y = evento.pos().y() - self.pos_mouse_iniziale.y()
             scroll_attuale = self.horizontalScrollBar().value()
             min_scroll = self.horizontalScrollBar().minimum()
             max_scroll = self.horizontalScrollBar().maximum()
 
-            if delta_x < -60 and self.scroll_x_iniziale == max_scroll and scroll_attuale == max_scroll:
-                self.richiesta_cambio_pagina.emit(1)
-            elif delta_x > 60 and self.scroll_x_iniziale == min_scroll and scroll_attuale == min_scroll:
-                self.richiesta_cambio_pagina.emit(-1)
+            # FIX SCORRIMENTO: Cambia pagina SOLO se lo swipe orizzontale è nettamente maggiore di quello verticale
+            if abs(delta_x) > 60 and abs(delta_x) > abs(delta_y) * 2:
+                if delta_x < 0 and self.scroll_x_iniziale == max_scroll and scroll_attuale == max_scroll:
+                    self.richiesta_cambio_pagina.emit(1)
+                elif delta_x > 0 and self.scroll_x_iniziale == min_scroll and scroll_attuale == min_scroll:
+                    self.richiesta_cambio_pagina.emit(-1)
 
         self.pos_mouse_iniziale = None
         super().mouseReleaseEvent(evento)
-
-    # MODIFICA 2: Gestione dello swipe a due dita sul trackpad
-    def wheelEvent(self, evento):
-        delta_x = evento.angleDelta().x()
-        delta_y = evento.angleDelta().y()
-
-        if abs(delta_x) > abs(delta_y) and abs(delta_x) > 0:
-            # Se lo scorrimento è orizzontale, accumula i pixel (Swipe 2 dita trackpad)
-            self.accumulo_swipe_x += delta_x
-            
-            # 120 è lo scatto standard di una gesture netta su Windows
-            if self.accumulo_swipe_x > 120: 
-                self.richiesta_cambio_pagina.emit(-1) # Verso destra -> Pagina Indietro
-                self.accumulo_swipe_x = 0
-            elif self.accumulo_swipe_x < -120:
-                self.richiesta_cambio_pagina.emit(1)  # Verso sx -> Pagina Avanti
-                self.accumulo_swipe_x = 0
-        else:
-            # Se è verticale, resetta l'accumulo orizzontale e fai lo Zoom
-            self.accumulo_swipe_x = 0
-            if delta_y != 0:
-                zoom = 1.15 if delta_y > 0 else 1 / 1.15
-                self.scale(zoom, zoom)
-                self.adattato_in_larghezza = False
 
     def tabletEvent(self, evento):
         if self.strumento == "nessuno":
@@ -443,6 +424,12 @@ class PaginaView(QGraphicsView):
         elif evento.type() == QEvent.Type.TabletRelease and self.disegnando:
             self.disegnando = False
             evento.accept()
+
+    def wheelEvent(self, evento):
+        # Rimosso swipe trackpad. Ripristinato puro zoom.
+        zoom = 1.15 if evento.angleDelta().y() > 0 else 1 / 1.15
+        self.scale(zoom, zoom)
+        self.adattato_in_larghezza = False
 
 
 # --- FINESTRA PRINCIPALE ---
@@ -519,7 +506,6 @@ class AppLibri(QMainWindow):
             super().closeEvent(event)
 
     def keyPressEvent(self, evento):
-        # Riceve correttamente le freccette e forza il cambio pagina
         if self.schermate.currentIndex() == 1 and not self.input_pag.hasFocus():
             if evento.key() == Qt.Key.Key_Right: self.pagina_avanti()
             elif evento.key() == Qt.Key.Key_Left: self.pagina_indietro()
