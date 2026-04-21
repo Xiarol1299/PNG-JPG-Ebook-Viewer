@@ -184,7 +184,7 @@ class BottoneStrumento(QPushButton):
         self.doppio_clic.emit()
         super().mouseDoubleClickEvent(evento)
 
-# --- VISUALIZZATORE VETTORIALE (ORA UNIFICA DUE PAGINE IN UNA) ---
+# --- VISUALIZZATORE VETTORIALE ---
 class PaginaView(QGraphicsView):
     richiesta_toggle_strumento = pyqtSignal()
     richiesta_cambio_pagina = pyqtSignal(int)
@@ -202,7 +202,6 @@ class PaginaView(QGraphicsView):
         self.item_sfondo = None
         self.modificata = False
         
-        # Variabili per gestire sia la vista singola che doppia in un'unica tela
         self.is_doppia = False
         self.percorso_sx = None
         self.percorso_dx = None
@@ -226,13 +225,15 @@ class PaginaView(QGraphicsView):
         self.adattato_in_larghezza = False
         self.pos_mouse_iniziale = None
         self.scroll_x_iniziale = 0
+        
+        # Variabile per il trackpad
+        self.accumulo_swipe_x = 0
 
     def adatta_in_altezza(self):
         if self.immagine_corrente:
             self.fitInView(self.scena.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
             self.adattato_in_larghezza = False
 
-    # NUOVA LOGICA: Carica e fonde le due pagine in un'unica tela invisibile
     def carica_immagini(self, perc_sx, pix_sx, perc_dx, pix_dx):
         self.salva_modifiche()
         self.scena.clear()
@@ -247,7 +248,6 @@ class PaginaView(QGraphicsView):
             return
 
         if self.is_doppia:
-            # Calcola le dimensioni (se una pagina manca es. inizio libro dispari, lascia spazio bianco)
             w_sx = pix_sx.width() if pix_sx else (pix_dx.width() if pix_dx else 0)
             h_sx = pix_sx.height() if pix_sx else (pix_dx.height() if pix_dx else 0)
             w_dx = pix_dx.width() if pix_dx else w_sx
@@ -256,7 +256,6 @@ class PaginaView(QGraphicsView):
             self.size_sx = QSize(w_sx, h_sx)
             self.size_dx = QSize(w_dx, h_dx)
 
-            # Crea una singola tela (canvas) larga quanto due pagine
             h_max = max(h_sx, h_dx)
             comp = QImage(w_sx + w_dx, h_max, QImage.Format.Format_RGB32)
             comp.fill(Qt.GlobalColor.white)
@@ -278,14 +277,12 @@ class PaginaView(QGraphicsView):
 
     def salva_modifiche(self):
         if self.modificata and self.immagine_corrente:
-            # Stampa tutto in un'unica super-immagine
             img = QImage(self.immagine_corrente.size(), QImage.Format.Format_RGB32)
             img.fill(Qt.GlobalColor.white) 
             pittore = QPainter(img)
             self.scena.render(pittore, target=QRectF(img.rect()), source=QRectF(self.immagine_corrente.rect()))
             pittore.end()
             
-            # Se siamo in doppia, la taglia perfettamente a metà e salva i due file separati!
             if self.is_doppia:
                 if self.percorso_sx:
                     img_sx = img.copy(0, 0, self.size_sx.width(), self.size_sx.height())
@@ -307,6 +304,13 @@ class PaginaView(QGraphicsView):
         elif strumento == "evidenziatore": penna.setColor(self.colore_evidenziatore)
         penna.setWidthF(spessore)
         return penna
+
+    # MODIFICA 1: Ignora le freccette direzionali in questa View per farle gestire dal Main!
+    def keyPressEvent(self, evento):
+        if evento.key() in (Qt.Key.Key_Right, Qt.Key.Key_Left):
+            evento.ignore() # Passa l'evento al form principale AppLibri
+        else:
+            super().keyPressEvent(evento)
 
     def event(self, evento):
         if evento.type() == QEvent.Type.Gesture:
@@ -350,6 +354,30 @@ class PaginaView(QGraphicsView):
 
         self.pos_mouse_iniziale = None
         super().mouseReleaseEvent(evento)
+
+    # MODIFICA 2: Gestione dello swipe a due dita sul trackpad
+    def wheelEvent(self, evento):
+        delta_x = evento.angleDelta().x()
+        delta_y = evento.angleDelta().y()
+
+        if abs(delta_x) > abs(delta_y) and abs(delta_x) > 0:
+            # Se lo scorrimento è orizzontale, accumula i pixel (Swipe 2 dita trackpad)
+            self.accumulo_swipe_x += delta_x
+            
+            # 120 è lo scatto standard di una gesture netta su Windows
+            if self.accumulo_swipe_x > 120: 
+                self.richiesta_cambio_pagina.emit(-1) # Verso destra -> Pagina Indietro
+                self.accumulo_swipe_x = 0
+            elif self.accumulo_swipe_x < -120:
+                self.richiesta_cambio_pagina.emit(1)  # Verso sx -> Pagina Avanti
+                self.accumulo_swipe_x = 0
+        else:
+            # Se è verticale, resetta l'accumulo orizzontale e fai lo Zoom
+            self.accumulo_swipe_x = 0
+            if delta_y != 0:
+                zoom = 1.15 if delta_y > 0 else 1 / 1.15
+                self.scale(zoom, zoom)
+                self.adattato_in_larghezza = False
 
     def tabletEvent(self, evento):
         if self.strumento == "nessuno":
@@ -416,11 +444,6 @@ class PaginaView(QGraphicsView):
             self.disegnando = False
             evento.accept()
 
-    def wheelEvent(self, evento):
-        zoom = 1.15 if evento.angleDelta().y() > 0 else 1 / 1.15
-        self.scale(zoom, zoom)
-        self.adattato_in_larghezza = False
-
 
 # --- FINESTRA PRINCIPALE ---
 class AppLibri(QMainWindow):
@@ -486,19 +509,17 @@ class AppLibri(QMainWindow):
                 json.dump(self.storico_pagine, f)
         except: pass
 
-    # Override della X della finestra
     def closeEvent(self, event):
         if self.schermate.currentIndex() == 1:
-            # Se siamo dentro un libro, non chiudere il programma! Torna solo al menu.
             self.torna_al_menu()
             event.ignore() 
         else:
-            # Se siamo già nel menu, salva la configurazione e chiudi l'app
             self.salva_config()
             self.salva_storico()
             super().closeEvent(event)
 
     def keyPressEvent(self, evento):
+        # Riceve correttamente le freccette e forza il cambio pagina
         if self.schermate.currentIndex() == 1 and not self.input_pag.hasFocus():
             if evento.key() == Qt.Key.Key_Right: self.pagina_avanti()
             elif evento.key() == Qt.Key.Key_Left: self.pagina_indietro()
@@ -615,7 +636,6 @@ class AppLibri(QMainWindow):
         self.widget_lettore.setObjectName("sfondo_lettore")
         layout_principale = QVBoxLayout(self.widget_lettore)
         
-        # --- BARRA ALTA (Con il nuovo tasto Full Screen) ---
         self.barra_alta = QHBoxLayout()
         self.btn_penna = BottoneStrumento("Penna")
         self.btn_penna.setCheckable(True)
@@ -643,14 +663,12 @@ class AppLibri(QMainWindow):
         self.barra_alta.addStretch()
         self.barra_alta.addWidget(self.btn_fullscreen_top)
 
-        # --- CENTRO (Ora unificato con una sola vista) ---
         centro = QHBoxLayout()
         self.vista_libro = PaginaView()
         self.vista_libro.richiesta_cambio_pagina.connect(self.gestisci_swipe)
         self.vista_libro.richiesta_toggle_strumento.connect(self.toggle_penna_evid)
         centro.addWidget(self.vista_libro)
 
-        # --- BARRA BASSA (Nascondibile) ---
         self.widget_basso = QWidget()
         self.barra_bassa = QHBoxLayout(self.widget_basso)
         
@@ -677,7 +695,6 @@ class AppLibri(QMainWindow):
         self.barra_bassa.addWidget(btn_avanti)
         self.barra_bassa.addStretch()
 
-        # --- ANGOLO BASSO DESTRA ---
         layout_nascondi = QHBoxLayout()
         layout_nascondi.addStretch()
         
