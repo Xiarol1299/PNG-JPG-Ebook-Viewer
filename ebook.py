@@ -184,7 +184,7 @@ class BottoneStrumento(QPushButton):
         self.doppio_clic.emit()
         super().mouseDoubleClickEvent(evento)
 
-# --- VISUALIZZATORE VETTORIALE (OTTIMIZZATO PER BATTERIA) ---
+# --- VISUALIZZATORE VETTORIALE (ORA UNIFICA DUE PAGINE IN UNA) ---
 class PaginaView(QGraphicsView):
     richiesta_toggle_strumento = pyqtSignal()
     richiesta_cambio_pagina = pyqtSignal(int)
@@ -194,16 +194,20 @@ class PaginaView(QGraphicsView):
         self.scena = QGraphicsScene()
         self.setScene(self.scena)
         
-        # --- OTTIMIZZAZIONI RISPARMIO ENERGETICO ---
-        # MinimalViewportUpdate aggiorna SOLO i pixel che cambiano (es. la punta della penna), non tutto lo schermo
         self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.MinimalViewportUpdate)
         self.setOptimizationFlag(QGraphicsView.OptimizationFlag.DontAdjustForAntialiasing, True)
         self.setOptimizationFlag(QGraphicsView.OptimizationFlag.DontSavePainterState, True)
         
         self.immagine_corrente = None
         self.item_sfondo = None
-        self.percorso_corrente = ""
         self.modificata = False
+        
+        # Variabili per gestire sia la vista singola che doppia in un'unica tela
+        self.is_doppia = False
+        self.percorso_sx = None
+        self.percorso_dx = None
+        self.size_sx = QSize(0,0)
+        self.size_dx = QSize(0,0)
         
         self.viewport().setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents)
         self.grabGesture(Qt.GestureType.PinchGesture)
@@ -213,55 +217,94 @@ class PaginaView(QGraphicsView):
         self.colore_penna = QColor(0, 0, 0)
         self.spessore_penna = 4
         self.usa_pressione_penna = True
-        
         self.colore_evidenziatore = QColor(255, 255, 0, 100)
         self.spessore_evidenziatore = 20
         self.usa_pressione_evid = False
-        
         self.spessore_gomma = 40
         self.disegnando = False
-        self.path_corrente = None
-        self.item_tratto_corrente = None
-
+        
         self.adattato_in_larghezza = False
         self.pos_mouse_iniziale = None
         self.scroll_x_iniziale = 0
 
-    def carica_immagine(self, percorso, pixmap):
+    def adatta_in_altezza(self):
+        if self.immagine_corrente:
+            self.fitInView(self.scena.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+            self.adattato_in_larghezza = False
+
+    # NUOVA LOGICA: Carica e fonde le due pagine in un'unica tela invisibile
+    def carica_immagini(self, perc_sx, pix_sx, perc_dx, pix_dx):
         self.salva_modifiche()
-        self.percorso_corrente = percorso
         self.scena.clear()
         
-        if pixmap:
-            self.immagine_corrente = pixmap
-            self.item_sfondo = self.scena.addPixmap(self.immagine_corrente)
-            self.item_sfondo.setZValue(-1) 
-            self.setSceneRect(QRectF(self.immagine_corrente.rect()))
-            self.modificata = False
-        else:
+        self.percorso_sx = perc_sx
+        self.percorso_dx = perc_dx
+        self.is_doppia = perc_dx is not None
+
+        if not perc_sx and not perc_dx:
             self.immagine_corrente = None
-            self.item_sfondo = None
-            self.percorso_corrente = ""
             self.modificata = False
+            return
+
+        if self.is_doppia:
+            # Calcola le dimensioni (se una pagina manca es. inizio libro dispari, lascia spazio bianco)
+            w_sx = pix_sx.width() if pix_sx else (pix_dx.width() if pix_dx else 0)
+            h_sx = pix_sx.height() if pix_sx else (pix_dx.height() if pix_dx else 0)
+            w_dx = pix_dx.width() if pix_dx else w_sx
+            h_dx = pix_dx.height() if pix_dx else h_sx
+
+            self.size_sx = QSize(w_sx, h_sx)
+            self.size_dx = QSize(w_dx, h_dx)
+
+            # Crea una singola tela (canvas) larga quanto due pagine
+            h_max = max(h_sx, h_dx)
+            comp = QImage(w_sx + w_dx, h_max, QImage.Format.Format_RGB32)
+            comp.fill(Qt.GlobalColor.white)
+            
+            painter = QPainter(comp)
+            if pix_sx: painter.drawPixmap(0, 0, pix_sx)
+            if pix_dx: painter.drawPixmap(w_sx, 0, pix_dx)
+            painter.end()
+
+            self.immagine_corrente = QPixmap.fromImage(comp)
+        else:
+            self.immagine_corrente = pix_sx
+            self.size_sx = QSize(pix_sx.width(), pix_sx.height()) if pix_sx else QSize(0,0)
+
+        self.item_sfondo = self.scena.addPixmap(self.immagine_corrente)
+        self.item_sfondo.setZValue(-1) 
+        self.setSceneRect(QRectF(self.immagine_corrente.rect()))
+        self.modificata = False
 
     def salva_modifiche(self):
-        if self.modificata and self.immagine_corrente and self.percorso_corrente:
+        if self.modificata and self.immagine_corrente:
+            # Stampa tutto in un'unica super-immagine
             img = QImage(self.immagine_corrente.size(), QImage.Format.Format_RGB32)
             img.fill(Qt.GlobalColor.white) 
             pittore = QPainter(img)
             self.scena.render(pittore, target=QRectF(img.rect()), source=QRectF(self.immagine_corrente.rect()))
             pittore.end()
-            img.save(self.percorso_corrente, quality=95)
+            
+            # Se siamo in doppia, la taglia perfettamente a metà e salva i due file separati!
+            if self.is_doppia:
+                if self.percorso_sx:
+                    img_sx = img.copy(0, 0, self.size_sx.width(), self.size_sx.height())
+                    img_sx.save(self.percorso_sx, quality=95)
+                if self.percorso_dx:
+                    img_dx = img.copy(self.size_sx.width(), 0, self.size_dx.width(), self.size_dx.height())
+                    img_dx.save(self.percorso_dx, quality=95)
+            else:
+                if self.percorso_sx:
+                    img.copy(0, 0, self.size_sx.width(), self.size_sx.height()).save(self.percorso_sx, quality=95)
+            
             self.modificata = False
 
     def crea_penna(self, strumento, spessore):
         penna = QPen()
         penna.setCapStyle(Qt.PenCapStyle.RoundCap)
         penna.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-        if strumento == "penna":
-            penna.setColor(self.colore_penna)
-        elif strumento == "evidenziatore":
-            penna.setColor(self.colore_evidenziatore)
+        if strumento == "penna": penna.setColor(self.colore_penna)
+        elif strumento == "evidenziatore": penna.setColor(self.colore_evidenziatore)
         penna.setWidthF(spessore)
         return penna
 
@@ -404,6 +447,7 @@ class AppLibri(QMainWindow):
         self.pagine_libro = []
         self.indice_pagina_attuale = 0
         self.vista_doppia = False
+        self.swipe_abilitato = True 
         
         self.cache_pagine = {}        
         self.coda_precaricamento = [] 
@@ -420,8 +464,7 @@ class AppLibri(QMainWindow):
                 dati = json.load(f)
                 self.cartella_principale = dati.get("cartella", "")
                 self.is_tema_scuro = dati.get("tema", True)
-        except:
-            pass
+        except: pass
 
     def salva_config(self):
         try:
@@ -443,13 +486,17 @@ class AppLibri(QMainWindow):
                 json.dump(self.storico_pagine, f)
         except: pass
 
+    # Override della X della finestra
     def closeEvent(self, event):
-        if hasattr(self, 'cartella_corrente') and self.cartella_corrente:
-            self.storico_pagine[self.cartella_corrente] = self.indice_pagina_attuale
-        self.salva_storico()
-        self.vista_sx.salva_modifiche()
-        self.vista_dx.salva_modifiche()
-        super().closeEvent(event)
+        if self.schermate.currentIndex() == 1:
+            # Se siamo dentro un libro, non chiudere il programma! Torna solo al menu.
+            self.torna_al_menu()
+            event.ignore() 
+        else:
+            # Se siamo già nel menu, salva la configurazione e chiudi l'app
+            self.salva_config()
+            self.salva_storico()
+            super().closeEvent(event)
 
     def keyPressEvent(self, evento):
         if self.schermate.currentIndex() == 1 and not self.input_pag.hasFocus():
@@ -568,7 +615,7 @@ class AppLibri(QMainWindow):
         self.widget_lettore.setObjectName("sfondo_lettore")
         layout_principale = QVBoxLayout(self.widget_lettore)
         
-        # --- BARRA ALTA ---
+        # --- BARRA ALTA (Con il nuovo tasto Full Screen) ---
         self.barra_alta = QHBoxLayout()
         self.btn_penna = BottoneStrumento("Penna")
         self.btn_penna.setCheckable(True)
@@ -586,37 +633,24 @@ class AppLibri(QMainWindow):
         self.btn_gomma.clicked.connect(lambda: self.imposta_strumento("gomma"))
         self.btn_gomma.doppio_clic.connect(self.imposta_gomma)
 
-        self.btn_menu = QPushButton("Torna al Menu")
-        self.btn_menu.setFixedSize(120, 40)
-        self.btn_menu.clicked.connect(self.torna_al_menu)
-
-        self.btn_exit_fs = QPushButton("Esci Full Screen")
-        self.btn_exit_fs.setFixedSize(140, 40)
-        self.btn_exit_fs.clicked.connect(self.toggle_fullscreen)
-        self.btn_exit_fs.hide()
+        self.btn_fullscreen_top = QPushButton("⛶ Schermo Intero")
+        self.btn_fullscreen_top.setFixedSize(140, 40)
+        self.btn_fullscreen_top.clicked.connect(self.toggle_fullscreen)
 
         self.barra_alta.addWidget(self.btn_penna)
         self.barra_alta.addWidget(self.btn_evid)
         self.barra_alta.addWidget(self.btn_gomma)
         self.barra_alta.addStretch()
-        self.barra_alta.addWidget(self.btn_menu)
-        self.barra_alta.addWidget(self.btn_exit_fs)
+        self.barra_alta.addWidget(self.btn_fullscreen_top)
 
-        # --- CENTRO ---
+        # --- CENTRO (Ora unificato con una sola vista) ---
         centro = QHBoxLayout()
-        self.vista_sx = PaginaView()
-        self.vista_dx = PaginaView()
-        self.vista_dx.hide()
-        
-        self.vista_sx.richiesta_cambio_pagina.connect(self.gestisci_swipe)
-        self.vista_dx.richiesta_cambio_pagina.connect(self.gestisci_swipe)
-        self.vista_sx.richiesta_toggle_strumento.connect(self.toggle_penna_evid)
-        self.vista_dx.richiesta_toggle_strumento.connect(self.toggle_penna_evid)
-        
-        centro.addWidget(self.vista_sx)
-        centro.addWidget(self.vista_dx)
+        self.vista_libro = PaginaView()
+        self.vista_libro.richiesta_cambio_pagina.connect(self.gestisci_swipe)
+        self.vista_libro.richiesta_toggle_strumento.connect(self.toggle_penna_evid)
+        centro.addWidget(self.vista_libro)
 
-        # --- BARRA BASSA (Con Frecce) ---
+        # --- BARRA BASSA (Nascondibile) ---
         self.widget_basso = QWidget()
         self.barra_bassa = QHBoxLayout(self.widget_basso)
         
@@ -651,12 +685,13 @@ class AppLibri(QMainWindow):
         self.btn_nascondi.setFixedSize(40, 40)
         self.btn_nascondi.clicked.connect(self.toggle_interfaccia_bassa)
         
-        self.btn_fullscreen = QPushButton("[ ]")
-        self.btn_fullscreen.setFixedSize(40, 40)
-        self.btn_fullscreen.clicked.connect(self.toggle_fullscreen)
+        self.btn_swipe = QPushButton("↔️ ON")
+        self.btn_swipe.setFixedSize(65, 40)
+        self.btn_swipe.setToolTip("Abilita/Disabilita lo Swipe per cambiare pagina")
+        self.btn_swipe.clicked.connect(self.toggle_swipe)
         
         layout_nascondi.addWidget(self.btn_nascondi)
-        layout_nascondi.addWidget(self.btn_fullscreen)
+        layout_nascondi.addWidget(self.btn_swipe) 
 
         layout_principale.addLayout(self.barra_alta)
         layout_principale.addLayout(centro)
@@ -665,23 +700,29 @@ class AppLibri(QMainWindow):
 
         self.schermate.addWidget(self.widget_lettore)
 
+    def toggle_swipe(self):
+        self.swipe_abilitato = not self.swipe_abilitato
+        if self.swipe_abilitato:
+            self.btn_swipe.setText("↔️ ON")
+        else:
+            self.btn_swipe.setText("🔒 OFF")
+
     def toggle_fullscreen(self):
         if self.isFullScreen():
             self.showMaximized()
-            self.btn_menu.show()
-            self.btn_exit_fs.hide()
+            self.btn_fullscreen_top.setText("⛶ Schermo Intero")
             self.widget_basso.show()
             self.btn_nascondi.show()
-            self.btn_fullscreen.show()
+            self.btn_swipe.show() 
         else:
             self.showFullScreen()
-            self.btn_menu.hide()
-            self.btn_exit_fs.show()
+            self.btn_fullscreen_top.setText("✖ Riduci Schermo")
             self.widget_basso.hide()
             self.btn_nascondi.hide()
-            self.btn_fullscreen.hide()
+            self.btn_swipe.hide() 
 
     def gestisci_swipe(self, direzione):
+        if not self.swipe_abilitato: return
         if direzione == 1: self.pagina_avanti()
         elif direzione == -1: self.pagina_indietro()
 
@@ -703,21 +744,26 @@ class AppLibri(QMainWindow):
         
         self.schermate.setCurrentIndex(1)
         self.aggiorna_pagine()
+        QTimer.singleShot(100, self.adatta_pagine_iniziali)
+
+    def adatta_pagine_iniziali(self):
+        self.vista_libro.adatta_in_altezza()
 
     def aggiorna_ram_se_modificate(self):
-        if self.vista_sx.modificata: 
-            self.vista_sx.salva_modifiche()
-            percorso_sx = self.vista_sx.percorso_corrente
-            if percorso_sx in self.cache_pagine: del self.cache_pagine[percorso_sx]
-            QPixmapCache.clear() 
-            self.cache_pagine[percorso_sx] = QPixmap(percorso_sx)
+        if self.vista_libro.modificata: 
+            perc_sx = self.vista_libro.percorso_sx
+            perc_dx = self.vista_libro.percorso_dx
             
-        if self.vista_dx.modificata: 
-            self.vista_dx.salva_modifiche()
-            percorso_dx = self.vista_dx.percorso_corrente
-            if percorso_dx in self.cache_pagine: del self.cache_pagine[percorso_dx]
-            QPixmapCache.clear()
-            self.cache_pagine[percorso_dx] = QPixmap(percorso_dx)
+            self.vista_libro.salva_modifiche()
+            
+            if perc_sx:
+                if perc_sx in self.cache_pagine: del self.cache_pagine[perc_sx]
+                QPixmapCache.clear() 
+                self.cache_pagine[perc_sx] = QPixmap(perc_sx)
+            if perc_dx:
+                if perc_dx in self.cache_pagine: del self.cache_pagine[perc_dx]
+                QPixmapCache.clear() 
+                self.cache_pagine[perc_dx] = QPixmap(perc_dx)
 
     def aggiorna_pagine(self):
         if not self.pagine_libro: return
@@ -726,35 +772,32 @@ class AppLibri(QMainWindow):
             nome_file = self.pagine_libro[self.indice_pagina_attuale]
             self.input_pag.setText(numero_da_nome(nome_file))
             percorso = os.path.join(self.cartella_corrente, nome_file)
-            self.vista_sx.carica_immagine(percorso, self.ottieni_da_cache(percorso))
+            self.vista_libro.carica_immagini(percorso, self.ottieni_da_cache(percorso), None, None)
         else:
             inizia_pari = False
             if int(numero_da_nome(self.pagine_libro[0])) % 2 == 0: inizia_pari = True
             indice_sx = self.indice_pagina_attuale
             
             if inizia_pari and indice_sx == 0:
-                self.vista_sx.carica_immagine(None, None)
                 percorso_dx = os.path.join(self.cartella_corrente, self.pagine_libro[0])
-                self.vista_dx.carica_immagine(percorso_dx, self.ottieni_da_cache(percorso_dx))
+                self.vista_libro.carica_immagini(None, None, percorso_dx, self.ottieni_da_cache(percorso_dx))
                 self.input_pag.setText(f"- / {numero_da_nome(self.pagine_libro[0])}")
             else:
                 percorso_sx = os.path.join(self.cartella_corrente, self.pagine_libro[indice_sx])
-                self.vista_sx.carica_immagine(percorso_sx, self.ottieni_da_cache(percorso_sx))
+                
                 if indice_sx + 1 < len(self.pagine_libro):
                     percorso_dx = os.path.join(self.cartella_corrente, self.pagine_libro[indice_sx + 1])
-                    self.vista_dx.carica_immagine(percorso_dx, self.ottieni_da_cache(percorso_dx))
+                    self.vista_libro.carica_immagini(percorso_sx, self.ottieni_da_cache(percorso_sx), percorso_dx, self.ottieni_da_cache(percorso_dx))
                     self.input_pag.setText(f"{numero_da_nome(self.pagine_libro[indice_sx])} - {numero_da_nome(self.pagine_libro[indice_sx + 1])}")
                 else:
-                    self.vista_dx.carica_immagine(None, None)
+                    self.vista_libro.carica_immagini(percorso_sx, self.ottieni_da_cache(percorso_sx), None, None)
                     self.input_pag.setText(numero_da_nome(self.pagine_libro[indice_sx]))
 
-        # OTTIMIZZAZIONE BATTERIA: Meno pagine, controllo più lento
         QTimer.singleShot(50, self.precarica_pagine_vicine)
 
     def precarica_pagine_vicine(self):
-        # Finestra di precaricamento ridotta a -3 / +5 per non affaticare CPU e batteria
         inizio = max(0, self.indice_pagina_attuale - 3)
-        fine = min(len(self.pagine_libro), self.indice_pagina_attuale + 6)
+        fine = min(len(self.pagine_libro), self.indice_pagina_attuale + 4)
         
         percorsi_utili = []
         for i in range(inizio, fine):
@@ -772,8 +815,6 @@ class AppLibri(QMainWindow):
             percorso = self.coda_precaricamento.pop(0)
             if percorso not in self.cache_pagine:
                 self.cache_pagine[percorso] = QPixmap(percorso)
-            
-            # Timer allungato a 50ms per far respirare il processore
             QTimer.singleShot(50, self.carica_prossima_in_coda)
 
     def pagina_avanti(self):
@@ -804,50 +845,49 @@ class AppLibri(QMainWindow):
     def cambia_vista(self):
         self.aggiorna_ram_se_modificate()
         self.vista_doppia = not self.vista_doppia
-        if self.vista_doppia: self.vista_dx.show()
-        else: self.vista_dx.hide()
         self.aggiorna_pagine()
 
     def toggle_interfaccia_bassa(self):
         self.widget_basso.setVisible(not self.widget_basso.isVisible())
 
     def imposta_strumento(self, strumento):
-        self.vista_sx.strumento = self.vista_dx.strumento = strumento
+        self.vista_libro.strumento = strumento
         self.btn_penna.setChecked(strumento == "penna")
         self.btn_evid.setChecked(strumento == "evidenziatore")
         self.btn_gomma.setChecked(strumento == "gomma")
         
-        self.vista_sx.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
-        self.vista_dx.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        if strumento == "nessuno":
+            self.vista_libro.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        else:
+            self.vista_libro.setDragMode(QGraphicsView.DragMode.NoDrag)
 
     def toggle_penna_evid(self):
         if self.btn_penna.isChecked(): self.imposta_strumento("evidenziatore")
         else: self.imposta_strumento("penna")
 
     def imposta_penna(self):
-        dialogo = DialogoImpostazioniStrumenti("Impostazioni Penna", self.vista_sx.spessore_penna, self.vista_sx.colore_penna, self.vista_sx.usa_pressione_penna, True, self)
+        dialogo = DialogoImpostazioniStrumenti("Impostazioni Penna", self.vista_libro.spessore_penna, self.vista_libro.colore_penna, self.vista_libro.usa_pressione_penna, True, self)
         if dialogo.exec():
-            self.vista_sx.spessore_penna = self.vista_dx.spessore_penna = dialogo.spessore
-            self.vista_sx.colore_penna = self.vista_dx.colore_penna = dialogo.colore
-            self.vista_sx.usa_pressione_penna = self.vista_dx.usa_pressione_penna = dialogo.usa_pressione
+            self.vista_libro.spessore_penna = dialogo.spessore
+            self.vista_libro.colore_penna = dialogo.colore
+            self.vista_libro.usa_pressione_penna = dialogo.usa_pressione
 
     def imposta_evidenziatore(self):
-        dialogo = DialogoImpostazioniStrumenti("Impostazioni Evidenziatore", self.vista_sx.spessore_evidenziatore, self.vista_sx.colore_evidenziatore, self.vista_sx.usa_pressione_evid, True, self)
+        dialogo = DialogoImpostazioniStrumenti("Impostazioni Evidenziatore", self.vista_libro.spessore_evidenziatore, self.vista_libro.colore_evidenziatore, self.vista_libro.usa_pressione_evid, True, self)
         if dialogo.exec():
-            self.vista_sx.spessore_evidenziatore = self.vista_dx.spessore_evidenziatore = dialogo.spessore
-            self.vista_sx.colore_evidenziatore = self.vista_dx.colore_evidenziatore = dialogo.colore
-            self.vista_sx.usa_pressione_evid = self.vista_dx.usa_pressione_evid = dialogo.usa_pressione
+            self.vista_libro.spessore_evidenziatore = dialogo.spessore
+            self.vista_libro.colore_evidenziatore = dialogo.colore
+            self.vista_libro.usa_pressione_evid = dialogo.usa_pressione
 
     def imposta_gomma(self):
-        dialogo = DialogoImpostazioniStrumenti("Spessore Gomma", self.vista_sx.spessore_gomma, None, False, False, self)
+        dialogo = DialogoImpostazioniStrumenti("Spessore Gomma", self.vista_libro.spessore_gomma, None, False, False, self)
         if dialogo.exec():
-            self.vista_sx.spessore_gomma = self.vista_dx.spessore_gomma = dialogo.spessore
+            self.vista_libro.spessore_gomma = dialogo.spessore
 
     def torna_al_menu(self):
         self.aggiorna_ram_se_modificate()
         self.storico_pagine[self.cartella_corrente] = self.indice_pagina_attuale
         self.salva_storico()
-        
         self.cache_pagine.clear()
         
         if self.isFullScreen():
