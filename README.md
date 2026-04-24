@@ -23,3 +23,5 @@ It's easy, just download the [.exe file from the release](https://github.com/Xia
 
 1) Python
 2) Library: PyQt6 (pip install PyQt6)
+3) Library: pdf2image (pip install pdf2image)
+4) pdf2image requirement: Poppler (add the bin folder in the system variables)
