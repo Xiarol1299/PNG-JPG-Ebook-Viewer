@@ -8,10 +8,182 @@ from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
 from PyQt6.QtCore import *
 
+# Prova a importare la libreria per convertire i PDF
+try:
+    from pdf2image import convert_from_path, pdfinfo_from_path
+    HAS_PDF2IMAGE = True
+except ImportError:
+    HAS_PDF2IMAGE = False
+
+# --- DIZIONARIO MULTILINGUA ---
+CURRENT_LANG = "it"
+
+STRINGS = {
+    "it": {
+        "titolo_app": "Il Mio Lettore Digitale",
+        "impostazioni": "⚙️ Impostazioni",
+        "caricamento": "Caricamento libreria in corso...",
+        "benvenuto": "Benvenuto! Vai in ⚙️ Impostazioni per selezionare la cartella dei tuoi libri.",
+        "penna": "Penna",
+        "evidenziatore": "Evidenziatore",
+        "gomma": "Gomma",
+        "schermo_intero": "⛶ Schermo Intero",
+        "riduci_schermo": "✖ Riduci Schermo",
+        "mezze_pagine": "1/2 Pagine",
+        "tooltip_swipe": "Abilita/Disabilita lo Swipe per cambiare pagina",
+        "scegli_copertina": "Scegli Copertina",
+        "impostazioni_prog": "Impostazioni Programma",
+        "tema_chiaro": "Passa a Modalità Chiara ☀️",
+        "tema_scuro": "Passa a Modalità Scura 🌙",
+        "cartella_lib": "Cartella della tua Libreria:",
+        "nessuna_cartella": "Nessuna cartella selezionata!",
+        "sfoglia": "Sfoglia...",
+        "strum_predefiniti": "Strumenti Predefiniti (applicati ai nuovi libri):",
+        "esporta_pdf": "📄 Esporta Libri in PDF (Unito agli Appunti)",
+        "chiudi": "Chiudi",
+        "spessore": "Spessore",
+        "opacita": "Trasparenza (Opacità)",
+        "abilita_pressione": "Abilita sensibilità alla pressione",
+        "scegli_colore": "Scegli Colore",
+        "conferma": "Conferma",
+        "attenzione": "Attenzione",
+        "creazione_pdf": "Creazione PDF in corso...",
+        "annulla": "Annulla",
+        "esportazione_pdf": "Esportazione PDF",
+        "esporta_pag": "Esportazione pagina",
+        "di": "di",
+        "annullato": "Annullato",
+        "export_interrotta": "L'operazione è stata interrotta.",
+        "fatto": "Fatto!",
+        "export_successo": "I libri sono stati esportati in PDF con successo nella cartella della libreria!",
+        "errore": "Errore",
+        "export_errore": "C'è stato un problema:\n",
+        "lingua": "Lingua / Language / Sprache:",
+        "trasforma_pdf": "Trasforma PDF\nin un Libro",
+        "nessun_pdf": "Nessun file PDF trovato nella cartella principale della libreria!",
+        "scegli_pdf": "Scegli il PDF da convertire:",
+        "nome_libro": "Come vuoi chiamare questo libro?",
+        "scegli_dpi": "Scegliere la risoluzione (100 -> 1000 dpi, consigliato: 650):",
+        "scegli_inizio_pagina": "Da quale pagina vuoi iniziare a contare? (Anche negativo):",
+        "conv_in_corso": "Conversione PDF in corso...",
+        "manca_libreria": "Libreria 'pdf2image' mancante!\nApri il terminale e scrivi: pip install pdf2image\n(Ricorda di installare anche Poppler su Windows!)",
+        "seleziona_libri": "Seleziona i libri da esportare:"
+    },
+    "en": {
+        "titolo_app": "My Digital Reader",
+        "impostazioni": "⚙️ Settings",
+        "caricamento": "Loading library...",
+        "benvenuto": "Welcome! Go to ⚙️ Settings to select your books folder.",
+        "penna": "Pen",
+        "evidenziatore": "Highlighter",
+        "gomma": "Eraser",
+        "schermo_intero": "⛶ Full Screen",
+        "riduci_schermo": "✖ Exit Full Screen",
+        "mezze_pagine": "1/2 Pages",
+        "tooltip_swipe": "Enable/Disable Swipe to turn pages",
+        "scegli_copertina": "Choose Cover",
+        "impostazioni_prog": "Program Settings",
+        "tema_chiaro": "Switch to Light Mode ☀️",
+        "tema_scuro": "Switch to Dark Mode 🌙",
+        "cartella_lib": "Your Library Folder:",
+        "nessuna_cartella": "No folder selected!",
+        "sfoglia": "Browse...",
+        "strum_predefiniti": "Default Tools (applied to new books):",
+        "esporta_pdf": "📄 Export Books to PDF (Merged with Notes)",
+        "chiudi": "Close",
+        "spessore": "Thickness",
+        "opacita": "Transparency (Opacity)",
+        "abilita_pressione": "Enable pressure sensitivity",
+        "scegli_colore": "Choose Color",
+        "conferma": "Confirm",
+        "attenzione": "Warning",
+        "creazione_pdf": "Creating PDF...",
+        "annulla": "Cancel",
+        "esportazione_pdf": "PDF Export",
+        "esporta_pag": "Exporting page",
+        "di": "of",
+        "annullato": "Canceled",
+        "export_interrotta": "The operation was interrupted.",
+        "fatto": "Done!",
+        "export_successo": "Books successfully exported to PDF in the library folder!",
+        "errore": "Error",
+        "export_errore": "There was a problem:\n",
+        "lingua": "Lingua / Language / Sprache:",
+        "trasforma_pdf": "Convert PDF\ninto Book",
+        "nessun_pdf": "No PDF files found in the main library folder!",
+        "scegli_pdf": "Choose the PDF to convert:",
+        "nome_libro": "What do you want to name this book?",
+        "scegli_dpi": "Choose resolution (100 -> 1000 dpi, recommended: 650):",
+        "scegli_inizio_pagina": "From which page do you want to start counting? (Even negative):",
+        "conv_in_corso": "Converting PDF...",
+        "manca_libreria": "'pdf2image' library missing!\nOpen terminal and type: pip install pdf2image\n(Remember to install Poppler on Windows too!)",
+        "seleziona_libri": "Select the books to export:"
+    },
+    "de": {
+        "titolo_app": "Mein Digitaler Leser",
+        "impostazioni": "⚙️ Einstellungen",
+        "caricamento": "Bibliothek wird geladen...",
+        "benvenuto": "Willkommen! Gehe zu ⚙️ Einstellungen, um deinen Bücherordner auszuwählen.",
+        "penna": "Stift",
+        "evidenziatore": "Textmarker",
+        "gomma": "Radiergummi",
+        "schermo_intero": "⛶ Vollbild",
+        "riduci_schermo": "✖ Vollbild beenden",
+        "mezze_pagine": "1/2 Seiten",
+        "tooltip_swipe": "Wischen zum Umblättern aktivieren/deaktivieren",
+        "scegli_copertina": "Cover auswählen",
+        "impostazioni_prog": "Programmeinstellungen",
+        "tema_chiaro": "Zum Hellmodus wechseln ☀️",
+        "tema_scuro": "Zum Dunkelmodus wechseln 🌙",
+        "cartella_lib": "Dein Bibliotheksordner:",
+        "nessuna_cartella": "Kein Ordner ausgewählt!",
+        "sfoglia": "Durchsuchen...",
+        "strum_predefiniti": "Standardwerkzeuge (für neue Bücher):",
+        "esporta_pdf": "📄 Bücher als PDF exportieren (mit Notizen)",
+        "chiudi": "Schließen",
+        "spessore": "Dicke",
+        "opacita": "Transparenz (Deckkraft)",
+        "abilita_pressione": "Druckempfindlichkeit aktivieren",
+        "scegli_colore": "Farbe wählen",
+        "conferma": "Bestätigen",
+        "attenzione": "Achtung",
+        "creazione_pdf": "PDF wird erstellt...",
+        "annulla": "Abbrechen",
+        "esportazione_pdf": "PDF-Export",
+        "esporta_pag": "Exportiere Seite",
+        "di": "von",
+        "annullato": "Abgebrochen",
+        "export_interrotta": "Der Vorgang wurde abgebrochen.",
+        "fatto": "Erledigt!",
+        "export_successo": "Bücher erfolgreich als PDF in den Bibliotheksordner exportiert!",
+        "errore": "Fehler",
+        "export_errore": "Es gab ein Problem:\n",
+        "lingua": "Lingua / Language / Sprache:",
+        "trasforma_pdf": "PDF in Buch\numwandeln",
+        "nessun_pdf": "Keine PDF-Dateien im Hauptordner gefunden!",
+        "scegli_pdf": "Wähle die PDF zur Konvertierung:",
+        "nome_libro": "Wie soll dieses Buch heißen?",
+        "scegli_dpi": "Wähle die Auflösung (100 -> 1000 dpi, empfohlen: 650):",
+        "scegli_inizio_pagina": "Ab welcher Seite möchtest du anfangen zu zählen? (auch negativ):",
+        "conv_in_corso": "Konvertiere PDF...",
+        "manca_libreria": "Die Bibliothek 'pdf2image' fehlt!\nÖffne das Terminal und gib ein: pip install pdf2image\n(Installiere auch Poppler unter Windows!)",
+        "seleziona_libri": "Wähle die zu exportierenden Bücher:"
+    }
+}
+
+def tr(chiave):
+    return STRINGS.get(CURRENT_LANG, STRINGS["it"]).get(chiave, chiave)
+
 def ordina_naturale(testo):
-    return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', testo)]
+    # Riconosce il meno SOLO se è all'inizio della stringa per i file come "-3.png"
+    return [int(c) if re.match(r'^-?\d+$', c) else c.lower() for c in re.split(r'(^-?\d+|\d+)', testo)]
 
 def numero_da_nome(nome_file):
+    # Se il file si chiama letteralmente "-3.png"
+    if re.match(r'^-\d+\.', nome_file):
+        match = re.search(r'^-\d+', nome_file)
+        if match: return match.group(0)
+    
     numeri = re.findall(r'\d+', nome_file)
     if numeri: return str(int(numeri[-1]))
     return "?"
@@ -69,7 +241,7 @@ class CartaLibro(QWidget):
             self.btn_copertina.setText(self.nome_libro)
 
     def scegli_copertina(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Scegli Copertina", "", "Immagini (*.png *.jpg *.jpeg)")
+        file_path, _ = QFileDialog.getOpenFileName(self, tr("scegli_copertina"), "", "Immagini (*.png *.jpg *.jpeg)")
         if file_path:
             estensione = file_path.split(".")[-1]
             nuovo_percorso = os.path.join(self.percorso, f"copertina.{estensione}")
@@ -87,7 +259,7 @@ class DialogoImpostazioniStrumenti(QDialog):
 
         layout = QVBoxLayout(self)
 
-        self.lbl_spessore = QLabel(f"Spessore: {self.spessore}")
+        self.lbl_spessore = QLabel(f"{tr('spessore')}: {self.spessore}")
         layout.addWidget(self.lbl_spessore)
         
         self.slider = QSlider(Qt.Orientation.Horizontal)
@@ -96,9 +268,9 @@ class DialogoImpostazioniStrumenti(QDialog):
         self.slider.valueChanged.connect(self.aggiorna_spessore)
         layout.addWidget(self.slider)
 
-        if self.colore is not None and "Evidenziatore" in self.windowTitle():
+        if self.colore is not None and "Evidenziatore" in self.windowTitle() or "Highlighter" in self.windowTitle() or "Textmarker" in self.windowTitle():
             opacita_iniziale = int((self.colore.alpha() / 255) * 100)
-            self.lbl_opacita = QLabel(f"Trasparenza (Opacità): {opacita_iniziale}%")
+            self.lbl_opacita = QLabel(f"{tr('opacita')}: {opacita_iniziale}%")
             layout.addWidget(self.lbl_opacita)
             
             self.slider_opacita = QSlider(Qt.Orientation.Horizontal)
@@ -108,28 +280,28 @@ class DialogoImpostazioniStrumenti(QDialog):
             layout.addWidget(self.slider_opacita)
 
         if mostra_pressione:
-            self.chk_pressione = QCheckBox("Abilita sensibilità alla pressione")
+            self.chk_pressione = QCheckBox(tr("abilita_pressione"))
             self.chk_pressione.setChecked(self.usa_pressione)
             self.chk_pressione.stateChanged.connect(self.aggiorna_pressione)
             layout.addWidget(self.chk_pressione)
 
         self.btn_colore = None
         if self.colore is not None:
-            self.btn_colore = QPushButton("Scegli Colore")
+            self.btn_colore = QPushButton(tr("scegli_colore"))
             self.aggiorna_bottone_colore()
             self.btn_colore.clicked.connect(self.scegli_colore)
             layout.addWidget(self.btn_colore)
 
-        btn_ok = QPushButton("Conferma")
+        btn_ok = QPushButton(tr("conferma"))
         btn_ok.clicked.connect(self.accept)
         layout.addWidget(btn_ok)
 
     def aggiorna_spessore(self, val):
         self.spessore = val
-        self.lbl_spessore.setText(f"Spessore: {val}")
+        self.lbl_spessore.setText(f"{tr('spessore')}: {val}")
 
     def aggiorna_opacita(self, val):
-        self.lbl_opacita.setText(f"Trasparenza (Opacità): {val}%")
+        self.lbl_opacita.setText(f"{tr('opacita')}: {val}%")
         alpha = int((val / 100) * 255)
         self.colore.setAlpha(alpha)
         self.aggiorna_bottone_colore()
@@ -143,15 +315,15 @@ class DialogoImpostazioniStrumenti(QDialog):
             self.btn_colore.setStyleSheet(f"background-color: {sfondo}; border-radius: 8px; padding: 10px; color: black;")
 
     def scegli_colore(self):
-        nuovo_colore = QColorDialog.getColor(self.colore, self, "Scegli Colore", options=QColorDialog.ColorDialogOption.ShowAlphaChannel)
+        nuovo_colore = QColorDialog.getColor(self.colore, self, tr("scegli_colore"), options=QColorDialog.ColorDialogOption.ShowAlphaChannel)
         if nuovo_colore.isValid():
             self.colore = nuovo_colore
-            if "Evidenziatore" in self.windowTitle():
+            if hasattr(self, 'slider_opacita'):
                 if self.colore.alpha() == 255:
                     self.colore.setAlpha(128)
                 nuova_opacita = int((self.colore.alpha() / 255) * 100)
                 self.slider_opacita.setValue(nuova_opacita)
-                self.lbl_opacita.setText(f"Trasparenza (Opacità): {nuova_opacita}%")
+                self.lbl_opacita.setText(f"{tr('opacita')}: {nuova_opacita}%")
             
             self.aggiorna_bottone_colore()
 
@@ -159,29 +331,41 @@ class DialogoImpostazioniStrumenti(QDialog):
 class DialogoImpostazioniApp(QDialog):
     def __init__(self, main_app):
         super().__init__(main_app)
-        self.setWindowTitle("Impostazioni Programma")
         self.main_app = main_app
-        self.resize(550, 400)
+        self.resize(550, 450)
 
         layout = QVBoxLayout(self)
 
-        testo_tema = "Passa a Modalità Chiara ☀️" if self.main_app.is_tema_scuro else "Passa a Modalità Scura 🌙"
-        self.btn_tema = QPushButton(testo_tema)
+        layout_lingua = QHBoxLayout()
+        self.lbl_lingua = QLabel(tr("lingua"))
+        layout_lingua.addWidget(self.lbl_lingua)
+        self.combo_lingua = QComboBox()
+        self.combo_lingua.addItems(["Italiano", "English", "Deutsch"])
+        
+        if CURRENT_LANG == "it": self.combo_lingua.setCurrentIndex(0)
+        elif CURRENT_LANG == "en": self.combo_lingua.setCurrentIndex(1)
+        elif CURRENT_LANG == "de": self.combo_lingua.setCurrentIndex(2)
+        
+        self.combo_lingua.currentIndexChanged.connect(self.cambia_lingua)
+        layout_lingua.addWidget(self.combo_lingua)
+        layout.addLayout(layout_lingua)
+
+        self.btn_tema = QPushButton()
         self.btn_tema.clicked.connect(self.cambia_tema)
         layout.addWidget(self.btn_tema)
 
-        layout.addWidget(QLabel("Cartella della tua Libreria:"))
+        self.lbl_cartella_titolo = QLabel()
+        layout.addWidget(self.lbl_cartella_titolo)
         
         layout_cartella = QHBoxLayout()
-        testo_cartella = self.main_app.cartella_principale if self.main_app.cartella_principale else "Nessuna cartella selezionata!"
-        self.lbl_cartella = QLineEdit(testo_cartella)
+        self.lbl_cartella = QLineEdit()
         self.lbl_cartella.setReadOnly(True)
         
-        btn_sfoglia = QPushButton("Sfoglia...")
-        btn_sfoglia.clicked.connect(self.scegli_cartella)
+        self.btn_sfoglia = QPushButton()
+        self.btn_sfoglia.clicked.connect(self.scegli_cartella)
         
         layout_cartella.addWidget(self.lbl_cartella)
-        layout_cartella.addWidget(btn_sfoglia)
+        layout_cartella.addWidget(self.btn_sfoglia)
         layout.addLayout(layout_cartella)
 
         riga = QFrame()
@@ -189,20 +373,21 @@ class DialogoImpostazioniApp(QDialog):
         riga.setFrameShadow(QFrame.Shadow.Sunken)
         layout.addWidget(riga)
 
-        layout.addWidget(QLabel("Strumenti Predefiniti (applicati ai nuovi libri):"))
+        self.lbl_strum = QLabel()
+        layout.addWidget(self.lbl_strum)
         layout_strumenti = QHBoxLayout()
         
-        btn_def_penna = QPushButton("✒️ Penna")
-        btn_def_penna.clicked.connect(self.modifica_def_penna)
-        layout_strumenti.addWidget(btn_def_penna)
+        self.btn_def_penna = QPushButton()
+        self.btn_def_penna.clicked.connect(self.modifica_def_penna)
+        layout_strumenti.addWidget(self.btn_def_penna)
         
-        btn_def_evid = QPushButton("🖍️ Evidenziatore")
-        btn_def_evid.clicked.connect(self.modifica_def_evid)
-        layout_strumenti.addWidget(btn_def_evid)
+        self.btn_def_evid = QPushButton()
+        self.btn_def_evid.clicked.connect(self.modifica_def_evid)
+        layout_strumenti.addWidget(self.btn_def_evid)
         
-        btn_def_gomma = QPushButton("🧽 Gomma")
-        btn_def_gomma.clicked.connect(self.modifica_def_gomma)
-        layout_strumenti.addWidget(btn_def_gomma)
+        self.btn_def_gomma = QPushButton()
+        self.btn_def_gomma.clicked.connect(self.modifica_def_gomma)
+        layout_strumenti.addWidget(self.btn_def_gomma)
         
         layout.addLayout(layout_strumenti)
 
@@ -211,25 +396,50 @@ class DialogoImpostazioniApp(QDialog):
         riga2.setFrameShadow(QFrame.Shadow.Sunken)
         layout.addWidget(riga2)
 
-        btn_esporta = QPushButton("📄 Esporta un Libro in PDF (Unito agli Appunti)")
-        btn_esporta.setStyleSheet("background-color: #d9534f; color: white;")
-        btn_esporta.clicked.connect(self.esporta_pdf)
-        layout.addWidget(btn_esporta)
+        self.btn_esporta = QPushButton()
+        self.btn_esporta.setStyleSheet("background-color: #d9534f; color: white;")
+        self.btn_esporta.clicked.connect(self.esporta_pdf)
+        layout.addWidget(self.btn_esporta)
 
         layout.addStretch()
 
-        btn_chiudi = QPushButton("Chiudi")
-        btn_chiudi.clicked.connect(self.accept)
-        layout.addWidget(btn_chiudi)
+        self.btn_chiudi = QPushButton()
+        self.btn_chiudi.clicked.connect(self.accept)
+        layout.addWidget(self.btn_chiudi)
+        
+        self.aggiorna_testi_ui()
+
+    def aggiorna_testi_ui(self):
+        self.setWindowTitle(tr("impostazioni_prog"))
+        self.lbl_lingua.setText(tr("lingua"))
+        self.btn_tema.setText(tr("tema_chiaro") if self.main_app.is_tema_scuro else tr("tema_scuro"))
+        self.lbl_cartella_titolo.setText(tr("cartella_lib"))
+        self.lbl_cartella.setText(self.main_app.cartella_principale if self.main_app.cartella_principale else tr("nessuna_cartella"))
+        self.btn_sfoglia.setText(tr("sfoglia"))
+        self.lbl_strum.setText(tr("strum_predefiniti"))
+        self.btn_def_penna.setText("✒️ " + tr("penna"))
+        self.btn_def_evid.setText("🖍️ " + tr("evidenziatore"))
+        self.btn_def_gomma.setText("🧽 " + tr("gomma"))
+        self.btn_esporta.setText(tr("esporta_pdf"))
+        self.btn_chiudi.setText(tr("chiudi"))
+
+    def cambia_lingua(self, indice):
+        global CURRENT_LANG
+        if indice == 0: CURRENT_LANG = "it"
+        elif indice == 1: CURRENT_LANG = "en"
+        elif indice == 2: CURRENT_LANG = "de"
+        
+        self.main_app.salva_config()
+        self.aggiorna_testi_ui()
+        self.main_app.aggiorna_testi_ui()
 
     def cambia_tema(self):
         self.main_app.cambia_tema()
-        testo_tema = "Passa a Modalità Chiara ☀️" if self.main_app.is_tema_scuro else "Passa a Modalità Scura 🌙"
-        self.btn_tema.setText(testo_tema)
+        self.btn_tema.setText(tr("tema_chiaro") if self.main_app.is_tema_scuro else tr("tema_scuro"))
 
     def scegli_cartella(self):
         cartella_iniziale = self.main_app.cartella_principale if self.main_app.cartella_principale else ""
-        nuova_cartella = QFileDialog.getExistingDirectory(self, "Seleziona la cartella dei libri", cartella_iniziale)
+        nuova_cartella = QFileDialog.getExistingDirectory(self, tr("cartella_lib"), cartella_iniziale)
         if nuova_cartella:
             self.lbl_cartella.setText(nuova_cartella)
             self.main_app.cartella_principale = nuova_cartella
@@ -238,7 +448,7 @@ class DialogoImpostazioniApp(QDialog):
 
     def modifica_def_penna(self):
         d = self.main_app.default_tools["penna"]
-        dialogo = DialogoImpostazioniStrumenti("Default Penna", d["spessore"], QColor(d["colore"]), d["pressione"], True, self)
+        dialogo = DialogoImpostazioniStrumenti(tr("penna"), d["spessore"], QColor(d["colore"]), d["pressione"], True, self)
         if dialogo.exec():
             self.main_app.default_tools["penna"] = {
                 "spessore": dialogo.spessore,
@@ -249,7 +459,7 @@ class DialogoImpostazioniApp(QDialog):
             
     def modifica_def_evid(self):
         d = self.main_app.default_tools["evidenziatore"]
-        dialogo = DialogoImpostazioniStrumenti("Default Evidenziatore", d["spessore"], QColor(d["colore"]), d["pressione"], True, self)
+        dialogo = DialogoImpostazioniStrumenti(tr("evidenziatore"), d["spessore"], QColor(d["colore"]), d["pressione"], True, self)
         if dialogo.exec():
             self.main_app.default_tools["evidenziatore"] = {
                 "spessore": dialogo.spessore,
@@ -260,82 +470,105 @@ class DialogoImpostazioniApp(QDialog):
 
     def modifica_def_gomma(self):
         d = self.main_app.default_tools["gomma"]
-        dialogo = DialogoImpostazioniStrumenti("Default Gomma", d["spessore"], None, False, False, self)
+        dialogo = DialogoImpostazioniStrumenti(tr("gomma"), d["spessore"], None, False, False, self)
         if dialogo.exec():
             self.main_app.default_tools["gomma"] = {"spessore": dialogo.spessore}
             self.main_app.salva_config()
 
     def esporta_pdf(self):
-        cartella_libro = QFileDialog.getExistingDirectory(self, "Scegli il libro da esportare in PDF", self.main_app.cartella_principale)
-        if not cartella_libro: return
+        if not self.main_app.cartella_principale: return
         
-        file_pdf, _ = QFileDialog.getSaveFileName(self, "Salva PDF come", os.path.basename(cartella_libro) + ".pdf", "PDF Files (*.pdf)")
-        if not file_pdf: return
+        cartelle_libri = [f for f in os.listdir(self.main_app.cartella_principale)
+                          if os.path.isdir(os.path.join(self.main_app.cartella_principale, f)) and not f.startswith('.')]
         
-        try:
-            immagini = [f for f in os.listdir(cartella_libro) if f.lower().endswith(('.png', '.jpg', '.jpeg')) and not f.lower().startswith('copertina')]
-            immagini = sorted(immagini, key=ordina_naturale)
-            
-            totale_pagine = len(immagini)
-            if totale_pagine == 0:
-                QMessageBox.warning(self, "Attenzione", "Nessuna pagina trovata nel libro selezionato!")
-                return
+        if not cartelle_libri:
+            QMessageBox.warning(self, tr("attenzione"), tr("nessuna_pagina"))
+            return
 
-            # --- PROGRESS BAR CREATA QUI ---
-            progress = QProgressDialog("Creazione PDF in corso...", "Annulla", 0, totale_pagine, self)
-            progress.setWindowTitle("Esportazione PDF")
-            progress.setWindowModality(Qt.WindowModality.WindowModal)
-            progress.setMinimumDuration(0) # Appare subito
-            progress.setValue(0)
+        dialogo = QDialog(self)
+        dialogo.setWindowTitle(tr("esporta_pdf"))
+        dialogo.resize(400, 300)
+        layout = QVBoxLayout(dialogo)
+        
+        layout.addWidget(QLabel(tr("seleziona_libri")))
+        
+        lista = QListWidget()
+        lista.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        lista.addItems(cartelle_libri)
+        layout.addWidget(lista)
+
+        btn_ok = QPushButton(tr("conferma"))
+        btn_ok.clicked.connect(dialogo.accept)
+        layout.addWidget(btn_ok)
+
+        if dialogo.exec() == QDialog.DialogCode.Accepted:
+            libri_scelti = [item.text() for item in lista.selectedItems()]
+            if not libri_scelti: return
             
-            writer = QPdfWriter(file_pdf)
-            writer.setResolution(300)
-            painter = QPainter()
-            painter.begin(writer)
-            
-            cartella_edit = os.path.join(cartella_libro, ".edit")
             annullato = False
-            
-            for i, nome in enumerate(immagini):
-                # Se premi "Annulla" interrompe tutto
-                if progress.wasCanceled():
-                    annullato = True
-                    break
+            for libro in libri_scelti:
+                if annullato: break
                 
-                # Aggiorna la barra e impedisce che il programma si blocchi
-                progress.setValue(i)
-                progress.setLabelText(f"Esportazione pagina {i+1} di {totale_pagine}...")
-                QApplication.processEvents()
+                cartella_libro = os.path.join(self.main_app.cartella_principale, libro)
+                file_pdf = os.path.join(self.main_app.cartella_principale, f"{libro}.pdf")
                 
-                if i > 0: writer.newPage()
-                
-                perc_base = os.path.join(cartella_libro, nome)
-                img_base = QImage(perc_base)
-                
-                perc_edit = os.path.join(cartella_edit, os.path.splitext(nome)[0] + ".png")
-                if os.path.exists(perc_edit):
-                    img_layer = QImage(perc_edit)
-                    p_comb = QPainter(img_base)
-                    p_comb.drawImage(0, 0, img_layer)
-                    p_comb.end()
-                
-                rect_pdf = writer.pageLayout().paintRectPixels(writer.resolution())
-                img_scalata = img_base.scaled(rect_pdf.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                
-                x = (rect_pdf.width() - img_scalata.width()) // 2
-                y = (rect_pdf.height() - img_scalata.height()) // 2
-                painter.drawImage(x, y, img_scalata)
-                
-            painter.end()
-            progress.setValue(totale_pagine)
-            
+                try:
+                    immagini = [f for f in os.listdir(cartella_libro) if f.lower().endswith(('.png', '.jpg', '.jpeg')) and not f.lower().startswith('copertina')]
+                    immagini = sorted(immagini, key=ordina_naturale)
+                    totale_pagine = len(immagini)
+                    
+                    if totale_pagine == 0: continue
+
+                    progress = QProgressDialog(f"{tr('creazione_pdf')} ({libro})", tr("annulla"), 0, totale_pagine, self)
+                    progress.setWindowTitle(tr("esportazione_pdf"))
+                    progress.setWindowModality(Qt.WindowModality.WindowModal)
+                    progress.setMinimumDuration(0) 
+                    progress.setValue(0)
+                    
+                    writer = QPdfWriter(file_pdf)
+                    writer.setResolution(300)
+                    painter = QPainter()
+                    painter.begin(writer)
+                    
+                    cartella_edit = os.path.join(cartella_libro, ".edit")
+                    
+                    for i, nome in enumerate(immagini):
+                        if progress.wasCanceled():
+                            annullato = True
+                            break
+                        
+                        progress.setValue(i)
+                        progress.setLabelText(f"[{libro}] {tr('esporta_pag')} {i+1} {tr('di')} {totale_pagine}...")
+                        QApplication.processEvents()
+                        
+                        if i > 0: writer.newPage()
+                        
+                        perc_base = os.path.join(cartella_libro, nome)
+                        img_base = QImage(perc_base)
+                        
+                        perc_edit = os.path.join(cartella_edit, os.path.splitext(nome)[0] + ".png")
+                        if os.path.exists(perc_edit):
+                            img_layer = QImage(perc_edit)
+                            p_comb = QPainter(img_base)
+                            p_comb.drawImage(0, 0, img_layer)
+                            p_comb.end()
+                        
+                        rect_pdf = writer.pageLayout().paintRectPixels(writer.resolution())
+                        img_scalata = img_base.scaled(rect_pdf.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                        
+                        x = (rect_pdf.width() - img_scalata.width()) // 2
+                        y = (rect_pdf.height() - img_scalata.height()) // 2
+                        painter.drawImage(x, y, img_scalata)
+                        
+                    painter.end()
+                    progress.setValue(totale_pagine)
+                except Exception as e:
+                    QMessageBox.critical(self, tr("errore"), f"{tr('export_errore')}{str(e)}")
+
             if annullato:
-                QMessageBox.warning(self, "Annullato", "L'esportazione del PDF è stata interrotta.")
+                QMessageBox.warning(self, tr("annullato"), tr("export_interrotta"))
             else:
-                QMessageBox.information(self, "Fatto!", "Il libro con i tuoi appunti è stato esportato in PDF con successo!")
-                
-        except Exception as e:
-            QMessageBox.critical(self, "Errore", f"C'è stato un problema durante l'esportazione:\n{str(e)}")
+                QMessageBox.information(self, tr("fatto"), tr("export_successo"))
 
 # --- BOTTONE DOPPIO CLIC ---
 class BottoneStrumento(QPushButton):
@@ -676,8 +909,6 @@ class PaginaView(QGraphicsView):
 class AppLibri(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Il Mio Lettore Digitale")
-        self.resize(1200, 800)
         
         QApplication.instance().setDoubleClickInterval(350)
         
@@ -692,6 +923,9 @@ class AppLibri(QMainWindow):
         self.carica_config()
         self.storico_pagine = {}
         self.carica_storico()
+        
+        self.setWindowTitle(tr("titolo_app"))
+        self.resize(1200, 800)
         
         self.schermate = QStackedWidget()
         self.setCentralWidget(self.schermate)
@@ -709,6 +943,7 @@ class AppLibri(QMainWindow):
         self.applica_tema()
 
     def carica_config(self):
+        global CURRENT_LANG
         self.cartella_principale = ""
         self.is_tema_scuro = True
         
@@ -721,6 +956,7 @@ class AppLibri(QMainWindow):
         try:
             with open(self.FILE_CONFIG, 'r') as f:
                 dati = json.load(f)
+                CURRENT_LANG = dati.get("lingua", "it")
                 self.cartella_principale = dati.get("cartella", "")
                 self.is_tema_scuro = dati.get("tema", True)
                 if "default_tools" in dati:
@@ -732,6 +968,7 @@ class AppLibri(QMainWindow):
     def salva_config(self):
         try:
             dati = {
+                "lingua": CURRENT_LANG,
                 "cartella": self.cartella_principale, 
                 "tema": self.is_tema_scuro,
                 "default_tools": self.default_tools
@@ -842,8 +1079,8 @@ class AppLibri(QMainWindow):
         layout_principale = QVBoxLayout(self.widget_menu)
 
         barra_superiore = QHBoxLayout()
-        self.btn_impostazioni = QPushButton("⚙️ Impostazioni")
-        self.btn_impostazioni.setFixedSize(140, 40)
+        self.btn_impostazioni = QPushButton()
+        self.btn_impostazioni.setFixedSize(160, 40)
         self.btn_impostazioni.clicked.connect(self.apri_impostazioni)
         
         barra_superiore.addStretch()
@@ -853,7 +1090,7 @@ class AppLibri(QMainWindow):
         self.layout_griglia = QGridLayout()
         self.layout_griglia.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
 
-        self.lbl_caricamento = QLabel("Caricamento libreria in corso...")
+        self.lbl_caricamento = QLabel()
         self.lbl_caricamento.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout_principale.addWidget(self.lbl_caricamento)
         
@@ -867,19 +1104,105 @@ class AppLibri(QMainWindow):
         dialogo = DialogoImpostazioniApp(self)
         dialogo.exec()
 
+    def avvia_importazione_pdf(self):
+        if not HAS_PDF2IMAGE:
+            QMessageBox.critical(self, tr("errore"), tr("manca_libreria"))
+            return
+
+        pdfs = [f for f in os.listdir(self.cartella_principale) if f.lower().endswith(".pdf")]
+        if not pdfs:
+            QMessageBox.warning(self, tr("attenzione"), tr("nessun_pdf"))
+            return
+
+        pdf_scelto, ok = QInputDialog.getItem(self, "PDF", tr("scegli_pdf"), pdfs, 0, False)
+        if not ok or not pdf_scelto: return
+
+        nome_libro, ok = QInputDialog.getText(self, "Nome", tr("nome_libro"))
+        if not ok or not nome_libro.strip(): return
+        nome_libro = nome_libro.strip()
+
+        dpi_scelto, ok = QInputDialog.getInt(self, "DPI", tr("scegli_dpi"), 650, 100, 1000, 50)
+        if not ok: return
+
+        # --- NUOVA OPZIONE: Scelta del numero di partenza ---
+        inizio_pag, ok = QInputDialog.getInt(self, "Pagina Iniziale", tr("scegli_inizio_pagina"), 1, -10000, 10000, 1)
+        if not ok: return
+
+        cartella_destinazione = os.path.join(self.cartella_principale, nome_libro)
+        if not os.path.exists(cartella_destinazione):
+            os.makedirs(cartella_destinazione)
+
+        percorso_completo = os.path.join(self.cartella_principale, pdf_scelto)
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            info = pdfinfo_from_path(percorso_completo)
+            totale_pagine = info["Pages"]
+
+            progress = QProgressDialog(tr("conv_in_corso"), tr("annulla"), 0, totale_pagine, self)
+            progress.setWindowTitle("Conversione")
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
+            progress.setMinimumDuration(0)
+            progress.setValue(0)
+
+            annullato = False
+            for i in range(1, totale_pagine + 1):
+                if progress.wasCanceled():
+                    annullato = True
+                    break
+
+                progress.setValue(i - 1)
+                progress.setLabelText(f"Pagina {i} {tr('di')} {totale_pagine}...")
+                QApplication.processEvents()
+
+                pagine = convert_from_path(percorso_completo, first_page=i, last_page=i, dpi=dpi_scelto)
+                if pagine:
+                    # Calcola il numero effettivo di salvataggio (anche negativo)
+                    numero_pagina_corrente = inizio_pag + (i - 1)
+                    nome_immagine = f"{numero_pagina_corrente}.png"
+                    
+                    percorso_immagine = os.path.join(cartella_destinazione, nome_immagine)
+                    pagine[0].save(percorso_immagine, "PNG")
+
+            progress.setValue(totale_pagine)
+            QApplication.restoreOverrideCursor()
+            self.popola_libreria()
+            
+            if annullato:
+                QMessageBox.warning(self, tr("annullato"), tr("export_interrotta"))
+            else:
+                QMessageBox.information(self, tr("fatto"), "Conversione completata con successo!")
+
+        except Exception as e:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.critical(self, tr("errore"), f"{tr('export_errore')}{str(e)}")
+
     def popola_libreria(self):
         for i in reversed(range(self.layout_griglia.count())): 
             widget = self.layout_griglia.itemAt(i).widget()
             if widget is not None: widget.setParent(None)
 
         if not self.cartella_principale or not os.path.exists(self.cartella_principale):
-            self.lbl_caricamento.setText("Benvenuto! Vai in ⚙️ Impostazioni per selezionare la cartella dei tuoi libri.")
+            self.lbl_caricamento.setText(tr("benvenuto"))
             self.lbl_caricamento.show()
+        else:
+            self.lbl_caricamento.hide() 
+
+        self.btn_impostazioni.setText(tr("impostazioni"))
+        self.setWindowTitle(tr("titolo_app"))
+
+        if not self.cartella_principale or not os.path.exists(self.cartella_principale):
             return
 
-        self.lbl_caricamento.hide() 
-
         riga, colonna = 0, 0
+        
+        btn_importa = QPushButton(tr("trasforma_pdf"))
+        btn_importa.setFixedSize(160, 220)
+        btn_importa.setStyleSheet("background-color: #d9534f; color: white; border-radius: 12px; font-size: 16px; font-weight: bold;")
+        btn_importa.clicked.connect(self.avvia_importazione_pdf)
+        self.layout_griglia.addWidget(btn_importa, riga, colonna)
+        colonna += 1
+
         for nome in os.listdir(self.cartella_principale):
             percorso = os.path.join(self.cartella_principale, nome)
             if os.path.isdir(percorso) and not nome.startswith("."):
@@ -909,24 +1232,24 @@ class AppLibri(QMainWindow):
         layout_principale = QVBoxLayout(self.widget_lettore)
         
         self.barra_alta = QHBoxLayout()
-        self.btn_penna = BottoneStrumento("Penna")
+        self.btn_penna = BottoneStrumento()
         self.btn_penna.setCheckable(True)
         self.btn_penna.setChecked(True)
         self.btn_penna.clicked.connect(lambda: self.imposta_strumento("penna"))
         self.btn_penna.doppio_clic.connect(self.imposta_penna)
         
-        self.btn_evid = BottoneStrumento("Evidenziatore")
+        self.btn_evid = BottoneStrumento()
         self.btn_evid.setCheckable(True)
         self.btn_evid.clicked.connect(lambda: self.imposta_strumento("evidenziatore"))
         self.btn_evid.doppio_clic.connect(self.imposta_evidenziatore)
 
-        self.btn_gomma = BottoneStrumento("Gomma")
+        self.btn_gomma = BottoneStrumento()
         self.btn_gomma.setCheckable(True)
         self.btn_gomma.clicked.connect(lambda: self.imposta_strumento("gomma"))
         self.btn_gomma.doppio_clic.connect(self.imposta_gomma)
 
-        self.btn_fullscreen_top = QPushButton("⛶ Schermo Intero")
-        self.btn_fullscreen_top.setFixedSize(140, 40)
+        self.btn_fullscreen_top = QPushButton()
+        self.btn_fullscreen_top.setFixedSize(160, 40)
         self.btn_fullscreen_top.clicked.connect(self.toggle_fullscreen)
 
         self.barra_alta.addWidget(self.btn_penna)
@@ -957,13 +1280,13 @@ class AppLibri(QMainWindow):
         self.input_pag.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.input_pag.returnPressed.connect(self.vai_a_pagina)
         
-        btn_toggle_vista = QPushButton("1/2 Pagine")
-        btn_toggle_vista.clicked.connect(self.cambia_vista)
+        self.btn_toggle_vista = QPushButton()
+        self.btn_toggle_vista.clicked.connect(self.cambia_vista)
         
         self.barra_bassa.addStretch()
         self.barra_bassa.addWidget(btn_indietro)
         self.barra_bassa.addWidget(self.input_pag)
-        self.barra_bassa.addWidget(btn_toggle_vista)
+        self.barra_bassa.addWidget(self.btn_toggle_vista)
         self.barra_bassa.addWidget(btn_avanti)
         self.barra_bassa.addStretch()
 
@@ -976,7 +1299,6 @@ class AppLibri(QMainWindow):
         
         self.btn_swipe = QPushButton("↔️ ON")
         self.btn_swipe.setFixedSize(65, 40)
-        self.btn_swipe.setToolTip("Abilita/Disabilita lo Swipe per cambiare pagina")
         self.btn_swipe.clicked.connect(self.toggle_swipe)
         
         layout_nascondi.addWidget(self.btn_nascondi)
@@ -988,6 +1310,18 @@ class AppLibri(QMainWindow):
         layout_principale.addLayout(layout_nascondi)
 
         self.schermate.addWidget(self.widget_lettore)
+        self.aggiorna_testi_ui()
+
+    def aggiorna_testi_ui(self):
+        self.btn_penna.setText(tr("penna"))
+        self.btn_evid.setText(tr("evidenziatore"))
+        self.btn_gomma.setText(tr("gomma"))
+        self.btn_toggle_vista.setText(tr("mezze_pagine"))
+        self.btn_swipe.setToolTip(tr("tooltip_swipe"))
+        if self.isFullScreen():
+            self.btn_fullscreen_top.setText(tr("riduci_schermo"))
+        else:
+            self.btn_fullscreen_top.setText(tr("schermo_intero"))
 
     def toggle_swipe(self):
         self.swipe_abilitato = not self.swipe_abilitato
@@ -999,13 +1333,13 @@ class AppLibri(QMainWindow):
     def toggle_fullscreen(self):
         if self.isFullScreen():
             self.showMaximized()
-            self.btn_fullscreen_top.setText("⛶ Schermo Intero")
+            self.btn_fullscreen_top.setText(tr("schermo_intero"))
             self.widget_basso.show()
             self.btn_nascondi.show()
             self.btn_swipe.show() 
         else:
             self.showFullScreen()
-            self.btn_fullscreen_top.setText("✖ Riduci Schermo")
+            self.btn_fullscreen_top.setText(tr("riduci_schermo"))
             self.widget_basso.hide()
             self.btn_nascondi.hide()
             self.btn_swipe.hide() 
@@ -1167,7 +1501,7 @@ class AppLibri(QMainWindow):
         else: self.imposta_strumento("penna")
 
     def imposta_penna(self):
-        dialogo = DialogoImpostazioniStrumenti("Impostazioni Penna", self.vista_libro.spessore_penna, self.vista_libro.colore_penna, self.vista_libro.usa_pressione_penna, True, self)
+        dialogo = DialogoImpostazioniStrumenti(tr("penna"), self.vista_libro.spessore_penna, self.vista_libro.colore_penna, self.vista_libro.usa_pressione_penna, True, self)
         if dialogo.exec():
             self.vista_libro.spessore_penna = dialogo.spessore
             self.vista_libro.colore_penna = dialogo.colore
@@ -1176,7 +1510,7 @@ class AppLibri(QMainWindow):
         self.vista_libro.setFocus()
 
     def imposta_evidenziatore(self):
-        dialogo = DialogoImpostazioniStrumenti("Impostazioni Evidenziatore", self.vista_libro.spessore_evidenziatore, self.vista_libro.colore_evidenziatore, self.vista_libro.usa_pressione_evid, True, self)
+        dialogo = DialogoImpostazioniStrumenti(tr("evidenziatore"), self.vista_libro.spessore_evidenziatore, self.vista_libro.colore_evidenziatore, self.vista_libro.usa_pressione_evid, True, self)
         if dialogo.exec():
             self.vista_libro.spessore_evidenziatore = dialogo.spessore
             self.vista_libro.colore_evidenziatore = dialogo.colore
@@ -1185,7 +1519,7 @@ class AppLibri(QMainWindow):
         self.vista_libro.setFocus()
 
     def imposta_gomma(self):
-        dialogo = DialogoImpostazioniStrumenti("Spessore Gomma", self.vista_libro.spessore_gomma, None, False, False, self)
+        dialogo = DialogoImpostazioniStrumenti(tr("gomma"), self.vista_libro.spessore_gomma, None, False, False, self)
         if dialogo.exec():
             self.vista_libro.spessore_gomma = dialogo.spessore
         self.vista_libro.clearFocus()
@@ -1201,6 +1535,7 @@ class AppLibri(QMainWindow):
             self.toggle_fullscreen()
             
         self.schermate.setCurrentIndex(0)
+        self.popola_libreria() 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
