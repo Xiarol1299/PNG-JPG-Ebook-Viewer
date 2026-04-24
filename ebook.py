@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import json
+import ctypes 
 from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
 from PyQt6.QtCore import *
@@ -15,7 +16,7 @@ def numero_da_nome(nome_file):
     if numeri: return str(int(numeri[-1]))
     return "?"
 
-# --- CARTA DEL LIBRO (CON COPERTINA) ---
+# --- CARTA DEL LIBRO ---
 class CartaLibro(QWidget):
     def __init__(self, nome, percorso, apri_callback):
         super().__init__()
@@ -95,6 +96,17 @@ class DialogoImpostazioniStrumenti(QDialog):
         self.slider.valueChanged.connect(self.aggiorna_spessore)
         layout.addWidget(self.slider)
 
+        if self.colore is not None and "Evidenziatore" in self.windowTitle():
+            opacita_iniziale = int((self.colore.alpha() / 255) * 100)
+            self.lbl_opacita = QLabel(f"Trasparenza (Opacità): {opacita_iniziale}%")
+            layout.addWidget(self.lbl_opacita)
+            
+            self.slider_opacita = QSlider(Qt.Orientation.Horizontal)
+            self.slider_opacita.setRange(10, 100)
+            self.slider_opacita.setValue(opacita_iniziale)
+            self.slider_opacita.valueChanged.connect(self.aggiorna_opacita)
+            layout.addWidget(self.slider_opacita)
+
         if mostra_pressione:
             self.chk_pressione = QCheckBox("Abilita sensibilità alla pressione")
             self.chk_pressione.setChecked(self.usa_pressione)
@@ -104,7 +116,7 @@ class DialogoImpostazioniStrumenti(QDialog):
         self.btn_colore = None
         if self.colore is not None:
             self.btn_colore = QPushButton("Scegli Colore")
-            self.btn_colore.setStyleSheet(f"background-color: {self.colore.name()}; border-radius: 8px; padding: 10px; color: black;")
+            self.aggiorna_bottone_colore()
             self.btn_colore.clicked.connect(self.scegli_colore)
             layout.addWidget(self.btn_colore)
 
@@ -116,16 +128,32 @@ class DialogoImpostazioniStrumenti(QDialog):
         self.spessore = val
         self.lbl_spessore.setText(f"Spessore: {val}")
 
+    def aggiorna_opacita(self, val):
+        self.lbl_opacita.setText(f"Trasparenza (Opacità): {val}%")
+        alpha = int((val / 100) * 255)
+        self.colore.setAlpha(alpha)
+        self.aggiorna_bottone_colore()
+
     def aggiorna_pressione(self, stato):
         self.usa_pressione = bool(stato)
 
+    def aggiorna_bottone_colore(self):
+        if self.btn_colore and self.colore:
+            sfondo = f"rgba({self.colore.red()}, {self.colore.green()}, {self.colore.blue()}, {self.colore.alpha()})"
+            self.btn_colore.setStyleSheet(f"background-color: {sfondo}; border-radius: 8px; padding: 10px; color: black;")
+
     def scegli_colore(self):
-        nuovo_colore = QColorDialog.getColor(self.colore, self, "Scegli Colore")
+        nuovo_colore = QColorDialog.getColor(self.colore, self, "Scegli Colore", options=QColorDialog.ColorDialogOption.ShowAlphaChannel)
         if nuovo_colore.isValid():
             self.colore = nuovo_colore
             if "Evidenziatore" in self.windowTitle():
-                self.colore.setAlpha(100)
-            self.btn_colore.setStyleSheet(f"background-color: {self.colore.name()}; border-radius: 8px; padding: 10px; color: black;")
+                if self.colore.alpha() == 255:
+                    self.colore.setAlpha(128)
+                nuova_opacita = int((self.colore.alpha() / 255) * 100)
+                self.slider_opacita.setValue(nuova_opacita)
+                self.lbl_opacita.setText(f"Trasparenza (Opacità): {nuova_opacita}%")
+            
+            self.aggiorna_bottone_colore()
 
 # --- FINESTRA DI DIALOGO IMPOSTAZIONI APP ---
 class DialogoImpostazioniApp(QDialog):
@@ -133,7 +161,7 @@ class DialogoImpostazioniApp(QDialog):
         super().__init__(main_app)
         self.setWindowTitle("Impostazioni Programma")
         self.main_app = main_app
-        self.resize(500, 200)
+        self.resize(550, 400)
 
         layout = QVBoxLayout(self)
 
@@ -156,6 +184,38 @@ class DialogoImpostazioniApp(QDialog):
         layout_cartella.addWidget(btn_sfoglia)
         layout.addLayout(layout_cartella)
 
+        riga = QFrame()
+        riga.setFrameShape(QFrame.Shape.HLine)
+        riga.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(riga)
+
+        layout.addWidget(QLabel("Strumenti Predefiniti (applicati ai nuovi libri):"))
+        layout_strumenti = QHBoxLayout()
+        
+        btn_def_penna = QPushButton("✒️ Penna")
+        btn_def_penna.clicked.connect(self.modifica_def_penna)
+        layout_strumenti.addWidget(btn_def_penna)
+        
+        btn_def_evid = QPushButton("🖍️ Evidenziatore")
+        btn_def_evid.clicked.connect(self.modifica_def_evid)
+        layout_strumenti.addWidget(btn_def_evid)
+        
+        btn_def_gomma = QPushButton("🧽 Gomma")
+        btn_def_gomma.clicked.connect(self.modifica_def_gomma)
+        layout_strumenti.addWidget(btn_def_gomma)
+        
+        layout.addLayout(layout_strumenti)
+
+        riga2 = QFrame()
+        riga2.setFrameShape(QFrame.Shape.HLine)
+        riga2.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(riga2)
+
+        btn_esporta = QPushButton("📄 Esporta un Libro in PDF (Unito agli Appunti)")
+        btn_esporta.setStyleSheet("background-color: #d9534f; color: white;")
+        btn_esporta.clicked.connect(self.esporta_pdf)
+        layout.addWidget(btn_esporta)
+
         layout.addStretch()
 
         btn_chiudi = QPushButton("Chiudi")
@@ -170,12 +230,112 @@ class DialogoImpostazioniApp(QDialog):
     def scegli_cartella(self):
         cartella_iniziale = self.main_app.cartella_principale if self.main_app.cartella_principale else ""
         nuova_cartella = QFileDialog.getExistingDirectory(self, "Seleziona la cartella dei libri", cartella_iniziale)
-        
         if nuova_cartella:
             self.lbl_cartella.setText(nuova_cartella)
             self.main_app.cartella_principale = nuova_cartella
             self.main_app.salva_config()
             self.main_app.popola_libreria()
+
+    def modifica_def_penna(self):
+        d = self.main_app.default_tools["penna"]
+        dialogo = DialogoImpostazioniStrumenti("Default Penna", d["spessore"], QColor(d["colore"]), d["pressione"], True, self)
+        if dialogo.exec():
+            self.main_app.default_tools["penna"] = {
+                "spessore": dialogo.spessore,
+                "colore": dialogo.colore.name(QColor.NameFormat.HexArgb),
+                "pressione": dialogo.usa_pressione
+            }
+            self.main_app.salva_config()
+            
+    def modifica_def_evid(self):
+        d = self.main_app.default_tools["evidenziatore"]
+        dialogo = DialogoImpostazioniStrumenti("Default Evidenziatore", d["spessore"], QColor(d["colore"]), d["pressione"], True, self)
+        if dialogo.exec():
+            self.main_app.default_tools["evidenziatore"] = {
+                "spessore": dialogo.spessore,
+                "colore": dialogo.colore.name(QColor.NameFormat.HexArgb),
+                "pressione": dialogo.usa_pressione
+            }
+            self.main_app.salva_config()
+
+    def modifica_def_gomma(self):
+        d = self.main_app.default_tools["gomma"]
+        dialogo = DialogoImpostazioniStrumenti("Default Gomma", d["spessore"], None, False, False, self)
+        if dialogo.exec():
+            self.main_app.default_tools["gomma"] = {"spessore": dialogo.spessore}
+            self.main_app.salva_config()
+
+    def esporta_pdf(self):
+        cartella_libro = QFileDialog.getExistingDirectory(self, "Scegli il libro da esportare in PDF", self.main_app.cartella_principale)
+        if not cartella_libro: return
+        
+        file_pdf, _ = QFileDialog.getSaveFileName(self, "Salva PDF come", os.path.basename(cartella_libro) + ".pdf", "PDF Files (*.pdf)")
+        if not file_pdf: return
+        
+        try:
+            immagini = [f for f in os.listdir(cartella_libro) if f.lower().endswith(('.png', '.jpg', '.jpeg')) and not f.lower().startswith('copertina')]
+            immagini = sorted(immagini, key=ordina_naturale)
+            
+            totale_pagine = len(immagini)
+            if totale_pagine == 0:
+                QMessageBox.warning(self, "Attenzione", "Nessuna pagina trovata nel libro selezionato!")
+                return
+
+            # --- PROGRESS BAR CREATA QUI ---
+            progress = QProgressDialog("Creazione PDF in corso...", "Annulla", 0, totale_pagine, self)
+            progress.setWindowTitle("Esportazione PDF")
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
+            progress.setMinimumDuration(0) # Appare subito
+            progress.setValue(0)
+            
+            writer = QPdfWriter(file_pdf)
+            writer.setResolution(300)
+            painter = QPainter()
+            painter.begin(writer)
+            
+            cartella_edit = os.path.join(cartella_libro, ".edit")
+            annullato = False
+            
+            for i, nome in enumerate(immagini):
+                # Se premi "Annulla" interrompe tutto
+                if progress.wasCanceled():
+                    annullato = True
+                    break
+                
+                # Aggiorna la barra e impedisce che il programma si blocchi
+                progress.setValue(i)
+                progress.setLabelText(f"Esportazione pagina {i+1} di {totale_pagine}...")
+                QApplication.processEvents()
+                
+                if i > 0: writer.newPage()
+                
+                perc_base = os.path.join(cartella_libro, nome)
+                img_base = QImage(perc_base)
+                
+                perc_edit = os.path.join(cartella_edit, os.path.splitext(nome)[0] + ".png")
+                if os.path.exists(perc_edit):
+                    img_layer = QImage(perc_edit)
+                    p_comb = QPainter(img_base)
+                    p_comb.drawImage(0, 0, img_layer)
+                    p_comb.end()
+                
+                rect_pdf = writer.pageLayout().paintRectPixels(writer.resolution())
+                img_scalata = img_base.scaled(rect_pdf.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                
+                x = (rect_pdf.width() - img_scalata.width()) // 2
+                y = (rect_pdf.height() - img_scalata.height()) // 2
+                painter.drawImage(x, y, img_scalata)
+                
+            painter.end()
+            progress.setValue(totale_pagine)
+            
+            if annullato:
+                QMessageBox.warning(self, "Annullato", "L'esportazione del PDF è stata interrotta.")
+            else:
+                QMessageBox.information(self, "Fatto!", "Il libro con i tuoi appunti è stato esportato in PDF con successo!")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Errore", f"C'è stato un problema durante l'esportazione:\n{str(e)}")
 
 # --- BOTTONE DOPPIO CLIC ---
 class BottoneStrumento(QPushButton):
@@ -199,7 +359,9 @@ class PaginaView(QGraphicsView):
         self.setOptimizationFlag(QGraphicsView.OptimizationFlag.DontSavePainterState, True)
         
         self.immagine_corrente = None
+        self.layer_disegno = None 
         self.item_sfondo = None
+        self.item_layer = None
         self.modificata = False
         
         self.is_doppia = False
@@ -222,6 +384,15 @@ class PaginaView(QGraphicsView):
         self.spessore_gomma = 40
         self.disegnando = False
         
+        self.path_corrente = None
+        self.item_tratto_corrente = None
+        self.usa_press_corrente = False
+        
+        self.tratti_temporanei_dati = []
+        self.tratti_temporanei_items = []
+        
+        self.update_gomma_in_attesa = False
+        
         self.adattato_in_larghezza = False
         self.pos_mouse_iniziale = None
         self.scroll_x_iniziale = 0
@@ -241,61 +412,84 @@ class PaginaView(QGraphicsView):
 
         if not perc_sx and not perc_dx:
             self.immagine_corrente = None
+            self.layer_disegno = None
             self.modificata = False
             return
 
-        if self.is_doppia:
-            w_sx = pix_sx.width() if pix_sx else (pix_dx.width() if pix_dx else 0)
-            h_sx = pix_sx.height() if pix_sx else (pix_dx.height() if pix_dx else 0)
-            w_dx = pix_dx.width() if pix_dx else w_sx
-            h_dx = pix_dx.height() if pix_dx else h_sx
+        w_sx = pix_sx.width() if pix_sx else (pix_dx.width() if pix_dx else 0)
+        h_sx = pix_sx.height() if pix_sx else (pix_dx.height() if pix_dx else 0)
+        w_dx = pix_dx.width() if pix_dx else w_sx
+        h_dx = pix_dx.height() if pix_dx else h_sx
 
-            self.size_sx = QSize(w_sx, h_sx)
-            self.size_dx = QSize(w_dx, h_dx)
+        self.size_sx = QSize(w_sx, h_sx)
+        self.size_dx = QSize(w_dx, h_dx)
 
-            h_max = max(h_sx, h_dx)
-            comp = QImage(w_sx + w_dx, h_max, QImage.Format.Format_RGB32)
-            comp.fill(Qt.GlobalColor.white)
-            
-            painter = QPainter(comp)
-            if pix_sx: painter.drawPixmap(0, 0, pix_sx)
-            if pix_dx: painter.drawPixmap(w_sx, 0, pix_dx)
-            painter.end()
-
-            self.immagine_corrente = QPixmap.fromImage(comp)
-        else:
-            self.immagine_corrente = pix_sx
-            self.size_sx = QSize(pix_sx.width(), pix_sx.height()) if pix_sx else QSize(0,0)
-
+        h_max = max(h_sx, h_dx)
+        w_tot = w_sx + w_dx if self.is_doppia else w_sx
+        
+        comp_base = QImage(w_tot, h_max, QImage.Format.Format_RGB888)
+        comp_base.fill(Qt.GlobalColor.white)
+        p_base = QPainter(comp_base)
+        if pix_sx: p_base.drawPixmap(0, 0, pix_sx)
+        if pix_dx: p_base.drawPixmap(w_sx, 0, pix_dx)
+        p_base.end()
+        
+        self.immagine_corrente = QPixmap.fromImage(comp_base)
         self.item_sfondo = self.scena.addPixmap(self.immagine_corrente)
         self.item_sfondo.setZValue(-1) 
-        self.setSceneRect(QRectF(self.immagine_corrente.rect()))
+
+        self.layer_disegno = QPixmap(w_tot, h_max)
+        self.layer_disegno.fill(Qt.GlobalColor.transparent)
+        
+        p_layer = QPainter(self.layer_disegno)
+        
+        def load_layer(perc, offset_x):
+            if perc:
+                cartella = os.path.dirname(perc)
+                nome = os.path.basename(perc)
+                perc_edit = os.path.join(cartella, ".edit", os.path.splitext(nome)[0] + ".png")
+                if os.path.exists(perc_edit):
+                    pix_edit = QPixmap(perc_edit)
+                    p_layer.drawPixmap(offset_x, 0, pix_edit)
+                    
+        load_layer(perc_sx, 0)
+        if self.is_doppia:
+            load_layer(perc_dx, w_sx)
+            
+        p_layer.end()
+        
+        self.item_layer = self.scena.addPixmap(self.layer_disegno)
+        self.item_layer.setZValue(1)
+
+        self.setSceneRect(QRectF(comp_base.rect()))
         self.modificata = False
 
     def salva_modifiche(self):
-        if self.modificata and self.immagine_corrente:
-            # FIX PESO: Toglie la trasparenza (RGB888) e usa salvataggio compresso
-            img = QImage(self.immagine_corrente.size(), QImage.Format.Format_RGB888)
-            img.fill(Qt.GlobalColor.white) 
-            pittore = QPainter(img)
-            pittore.setRenderHint(QPainter.RenderHint.Antialiasing)
-            self.scena.render(pittore, target=QRectF(img.rect()), source=QRectF(self.immagine_corrente.rect()))
-            pittore.end()
+        if self.modificata and self.layer_disegno:
+            img_layer = self.layer_disegno.toImage()
             
-            def salva_compresso(immagine_da_salvare, percorso):
-                # Qualità al 100%: Visivamente perfetto, ma alleggerito enormemente!
-                immagine_da_salvare.save(percorso, "JPEG", 100)
+            def salva_layer(img_taglio, perc_orig):
+                if perc_orig:
+                    cartella = os.path.dirname(perc_orig)
+                    cartella_edit = os.path.join(cartella, ".edit")
+                    
+                    if not os.path.exists(cartella_edit):
+                        os.makedirs(cartella_edit, exist_ok=True)
+                        if os.name == 'nt':
+                            FILE_ATTRIBUTE_HIDDEN = 0x02
+                            ctypes.windll.kernel32.SetFileAttributesW(cartella_edit, FILE_ATTRIBUTE_HIDDEN)
+                            
+                    nome = os.path.basename(perc_orig)
+                    perc_edit = os.path.join(cartella_edit, os.path.splitext(nome)[0] + ".png")
+                    img_taglio.save(perc_edit, "PNG")
 
             if self.is_doppia:
-                if self.percorso_sx:
-                    img_sx = img.copy(0, 0, self.size_sx.width(), self.size_sx.height())
-                    salva_compresso(img_sx, self.percorso_sx)
-                if self.percorso_dx:
-                    img_dx = img.copy(self.size_sx.width(), 0, self.size_dx.width(), self.size_dx.height())
-                    salva_compresso(img_dx, self.percorso_dx)
+                img_sx = img_layer.copy(0, 0, self.size_sx.width(), self.size_sx.height())
+                salva_layer(img_sx, self.percorso_sx)
+                img_dx = img_layer.copy(self.size_sx.width(), 0, self.size_dx.width(), self.size_dx.height())
+                salva_layer(img_dx, self.percorso_dx)
             else:
-                if self.percorso_sx:
-                    salva_compresso(img, self.percorso_sx)
+                salva_layer(img_layer, self.percorso_sx)
             
             self.modificata = False
 
@@ -326,6 +520,8 @@ class PaginaView(QGraphicsView):
 
     def mouseDoubleClickEvent(self, evento):
         if self.immagine_corrente:
+            punto_scena = self.mapToScene(evento.pos())
+            
             if self.adattato_in_larghezza:
                 self.fitInView(self.scena.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
                 self.adattato_in_larghezza = False
@@ -333,7 +529,7 @@ class PaginaView(QGraphicsView):
                 scala = self.viewport().width() / self.immagine_corrente.width()
                 self.resetTransform()
                 self.scale(scala, scala)
-                self.verticalScrollBar().setValue(0)
+                self.centerOn(punto_scena) 
                 self.adattato_in_larghezza = True
         super().mouseDoubleClickEvent(evento)
 
@@ -350,7 +546,6 @@ class PaginaView(QGraphicsView):
             min_scroll = self.horizontalScrollBar().minimum()
             max_scroll = self.horizontalScrollBar().maximum()
 
-            # FIX SCORRIMENTO: Cambia pagina SOLO se lo swipe orizzontale è nettamente maggiore di quello verticale
             if abs(delta_x) > 60 and abs(delta_x) > abs(delta_y) * 2:
                 if delta_x < 0 and self.scroll_x_iniziale == max_scroll and scroll_attuale == max_scroll:
                     self.richiesta_cambio_pagina.emit(1)
@@ -360,8 +555,13 @@ class PaginaView(QGraphicsView):
         self.pos_mouse_iniziale = None
         super().mouseReleaseEvent(evento)
 
+    def aggiorna_ui_gomma(self):
+        if self.item_layer and self.layer_disegno:
+            self.item_layer.setPixmap(self.layer_disegno)
+        self.update_gomma_in_attesa = False
+
     def tabletEvent(self, evento):
-        if self.strumento == "nessuno":
+        if self.strumento == "nessuno" or not self.layer_disegno:
             evento.ignore()
             return
 
@@ -380,14 +580,20 @@ class PaginaView(QGraphicsView):
             self.disegnando = True
             self.ultimo_punto = punto_reale
             self.ultima_pressione = pressione
-
+            
             if strumento_attivo != "gomma":
-                usa_press = self.usa_pressione_penna if strumento_attivo == "penna" else self.usa_pressione_evid
-                if not usa_press:
+                self.usa_press_corrente = self.usa_pressione_penna if strumento_attivo == "penna" else self.usa_pressione_evid
+                
+                if not self.usa_press_corrente:
                     self.path_corrente = QPainterPath(self.ultimo_punto)
                     spessore = self.spessore_penna if strumento_attivo == "penna" else self.spessore_evidenziatore
-                    self.item_tratto_corrente = self.scena.addPath(self.path_corrente, self.crea_penna(strumento_attivo, spessore))
-                    self.item_tratto_corrente.setData(0, "disegno")
+                    penna = self.crea_penna(strumento_attivo, spessore)
+                    self.item_tratto_corrente = self.scena.addPath(self.path_corrente, penna)
+                    self.item_tratto_corrente.setZValue(2)
+                else:
+                    self.tratti_temporanei_dati.clear()
+                    self.tratti_temporanei_items.clear()
+            
             evento.accept()
             
         elif evento.type() == QEvent.Type.TabletMove and self.disegnando:
@@ -397,40 +603,74 @@ class PaginaView(QGraphicsView):
             )
 
             if strumento_attivo == "gomma":
-                r = self.spessore_gomma / 2
-                rect = QRectF(punto_reale.x() - r, punto_reale.y() - r, r*2, r*2)
-                for item in self.scena.items(rect):
-                    if item.data(0) == "disegno":
-                        self.scena.removeItem(item)
-                        self.modificata = True
+                pittore = QPainter(self.layer_disegno)
+                pittore.setRenderHint(QPainter.RenderHint.Antialiasing)
+                pittore.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+                penna = QPen(Qt.GlobalColor.transparent, self.spessore_gomma)
+                penna.setCapStyle(Qt.PenCapStyle.RoundCap)
+                penna.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+                pittore.setPen(penna)
+                pittore.drawLine(self.ultimo_punto, punto_smussato)
+                pittore.end()
+                
+                if not self.update_gomma_in_attesa:
+                    self.update_gomma_in_attesa = True
+                    QTimer.singleShot(33, self.aggiorna_ui_gomma) 
             else:
-                usa_press = self.usa_pressione_penna if strumento_attivo == "penna" else self.usa_pressione_evid
-                if usa_press:
+                if not self.usa_press_corrente:
+                    self.path_corrente.lineTo(punto_smussato)
+                    self.item_tratto_corrente.setPath(self.path_corrente)
+                else:
                     spessore_base = self.spessore_penna if strumento_attivo == "penna" else self.spessore_evidenziatore
                     moltiplicatore = 0.3 + (1.2 * ((pressione + self.ultima_pressione) / 2))
                     spessore = spessore_base * moltiplicatore
-                    linea = self.scena.addLine(self.ultimo_punto.x(), self.ultimo_punto.y(), punto_smussato.x(), punto_smussato.y(), self.crea_penna(strumento_attivo, spessore))
-                    linea.setData(0, "disegno") 
-                else:
-                    self.path_corrente.lineTo(punto_smussato)
-                    self.item_tratto_corrente.setPath(self.path_corrente)
+                    
+                    penna = self.crea_penna(strumento_attivo, spessore)
+                    linea = self.scena.addLine(self.ultimo_punto.x(), self.ultimo_punto.y(), punto_smussato.x(), punto_smussato.y(), penna)
+                    linea.setZValue(2)
+                    
+                    self.tratti_temporanei_items.append(linea)
+                    self.tratti_temporanei_dati.append((self.ultimo_punto, punto_smussato, penna))
 
-                self.modificata = True
-
+            self.modificata = True
             self.ultimo_punto = punto_smussato
             self.ultima_pressione = pressione
             evento.accept()
             
         elif evento.type() == QEvent.Type.TabletRelease and self.disegnando:
             self.disegnando = False
+            
+            if strumento_attivo == "gomma":
+                self.aggiorna_ui_gomma()
+            else:
+                pittore = QPainter(self.layer_disegno)
+                pittore.setRenderHint(QPainter.RenderHint.Antialiasing)
+                
+                if not self.usa_press_corrente:
+                    if self.path_corrente is not None:
+                        spessore = self.spessore_penna if strumento_attivo == "penna" else self.spessore_evidenziatore
+                        pittore.setPen(self.crea_penna(strumento_attivo, spessore))
+                        pittore.drawPath(self.path_corrente)
+                        
+                        self.scena.removeItem(self.item_tratto_corrente)
+                        self.path_corrente = None
+                        self.item_tratto_corrente = None
+                else:
+                    if self.tratti_temporanei_dati:
+                        for (p1, p2, penna) in self.tratti_temporanei_dati:
+                            pittore.setPen(penna)
+                            pittore.drawLine(p1, p2)
+                        
+                        for item in self.tratti_temporanei_items:
+                            self.scena.removeItem(item)
+                            
+                        self.tratti_temporanei_dati.clear()
+                        self.tratti_temporanei_items.clear()
+                        
+                pittore.end()
+                self.item_layer.setPixmap(self.layer_disegno)
+                
             evento.accept()
-
-    def wheelEvent(self, evento):
-        # Rimosso swipe trackpad. Ripristinato puro zoom.
-        zoom = 1.15 if evento.angleDelta().y() > 0 else 1 / 1.15
-        self.scale(zoom, zoom)
-        self.adattato_in_larghezza = False
-
 
 # --- FINESTRA PRINCIPALE ---
 class AppLibri(QMainWindow):
@@ -438,6 +678,8 @@ class AppLibri(QMainWindow):
         super().__init__()
         self.setWindowTitle("Il Mio Lettore Digitale")
         self.resize(1200, 800)
+        
+        QApplication.instance().setDoubleClickInterval(350)
         
         if getattr(sys, 'frozen', False):
             cartella_programma = os.path.dirname(sys.executable)
@@ -469,16 +711,31 @@ class AppLibri(QMainWindow):
     def carica_config(self):
         self.cartella_principale = ""
         self.is_tema_scuro = True
+        
+        self.default_tools = {
+            "penna": {"spessore": 4, "colore": "#ff000000", "pressione": True},
+            "evidenziatore": {"spessore": 20, "colore": "#64ffff00", "pressione": False},
+            "gomma": {"spessore": 40}
+        }
+        
         try:
             with open(self.FILE_CONFIG, 'r') as f:
                 dati = json.load(f)
                 self.cartella_principale = dati.get("cartella", "")
                 self.is_tema_scuro = dati.get("tema", True)
+                if "default_tools" in dati:
+                    for k in ["penna", "evidenziatore", "gomma"]:
+                        if k in dati["default_tools"]:
+                            self.default_tools[k].update(dati["default_tools"][k])
         except: pass
 
     def salva_config(self):
         try:
-            dati = {"cartella": self.cartella_principale, "tema": self.is_tema_scuro}
+            dati = {
+                "cartella": self.cartella_principale, 
+                "tema": self.is_tema_scuro,
+                "default_tools": self.default_tools
+            }
             with open(self.FILE_CONFIG, 'w') as f:
                 json.dump(dati, f)
         except: pass
@@ -486,9 +743,37 @@ class AppLibri(QMainWindow):
     def carica_storico(self):
         try:
             with open(self.FILE_STORICO, 'r') as f:
-                self.storico_pagine = json.load(f)
+                dati = json.load(f)
+                self.storico_pagine = {}
+                for k, v in dati.items():
+                    if isinstance(v, int):
+                        self.storico_pagine[k] = {"pagina": v}
+                    else:
+                        self.storico_pagine[k] = v
         except:
             self.storico_pagine = {}
+
+    def salva_stato_libro_corrente(self):
+        if hasattr(self, 'cartella_corrente') and self.cartella_corrente:
+            strumenti_attuali = {
+                "penna": {
+                    "spessore": self.vista_libro.spessore_penna,
+                    "colore": self.vista_libro.colore_penna.name(QColor.NameFormat.HexArgb),
+                    "pressione": self.vista_libro.usa_pressione_penna
+                },
+                "evidenziatore": {
+                    "spessore": self.vista_libro.spessore_evidenziatore,
+                    "colore": self.vista_libro.colore_evidenziatore.name(QColor.NameFormat.HexArgb),
+                    "pressione": self.vista_libro.usa_pressione_evid
+                },
+                "gomma": {
+                    "spessore": self.vista_libro.spessore_gomma
+                }
+            }
+            self.storico_pagine[self.cartella_corrente] = {
+                "pagina": self.indice_pagina_attuale,
+                "strumenti": strumenti_attuali
+            }
 
     def salva_storico(self):
         try:
@@ -502,6 +787,7 @@ class AppLibri(QMainWindow):
             event.ignore() 
         else:
             self.salva_config()
+            self.salva_stato_libro_corrente()
             self.salva_storico()
             super().closeEvent(event)
 
@@ -607,7 +893,7 @@ class AppLibri(QMainWindow):
 
     def gestisci_cartella(self, percorso):
         elementi = os.listdir(percorso)
-        cartelle_interne = [e for e in elementi if os.path.isdir(os.path.join(percorso, e))]
+        cartelle_interne = [e for e in elementi if os.path.isdir(os.path.join(percorso, e)) and not e.startswith('.')]
         if len(cartelle_interne) > 0:
             menu_parti = QMenu(self)
             for cartella in cartelle_interne:
@@ -741,10 +1027,26 @@ class AppLibri(QMainWindow):
         if not self.pagine_libro: return
         self.cache_pagine.clear()
         
-        indice_salvato = self.storico_pagine.get(percorso, 0)
+        book_data = self.storico_pagine.get(percorso, {})
+        indice_salvato = book_data.get("pagina", 0) if isinstance(book_data, dict) else 0
+        tools = book_data.get("strumenti", self.default_tools) if isinstance(book_data, dict) else self.default_tools
+
         if indice_salvato >= len(self.pagine_libro): indice_salvato = 0
         self.indice_pagina_attuale = indice_salvato
         
+        p_data = tools.get("penna", self.default_tools["penna"])
+        self.vista_libro.spessore_penna = p_data.get("spessore", 4)
+        self.vista_libro.colore_penna = QColor(p_data.get("colore", "#ff000000"))
+        self.vista_libro.usa_pressione_penna = p_data.get("pressione", True)
+
+        e_data = tools.get("evidenziatore", self.default_tools["evidenziatore"])
+        self.vista_libro.spessore_evidenziatore = e_data.get("spessore", 20)
+        self.vista_libro.colore_evidenziatore = QColor(e_data.get("colore", "#64ffff00"))
+        self.vista_libro.usa_pressione_evid = e_data.get("pressione", False)
+
+        g_data = tools.get("gomma", self.default_tools["gomma"])
+        self.vista_libro.spessore_gomma = g_data.get("spessore", 40)
+
         self.schermate.setCurrentIndex(1)
         self.aggiorna_pagine()
         QTimer.singleShot(100, self.adatta_pagine_iniziali)
@@ -858,11 +1160,7 @@ class AppLibri(QMainWindow):
         self.btn_penna.setChecked(strumento == "penna")
         self.btn_evid.setChecked(strumento == "evidenziatore")
         self.btn_gomma.setChecked(strumento == "gomma")
-        
-        if strumento == "nessuno":
-            self.vista_libro.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
-        else:
-            self.vista_libro.setDragMode(QGraphicsView.DragMode.NoDrag)
+        self.vista_libro.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
 
     def toggle_penna_evid(self):
         if self.btn_penna.isChecked(): self.imposta_strumento("evidenziatore")
@@ -874,6 +1172,8 @@ class AppLibri(QMainWindow):
             self.vista_libro.spessore_penna = dialogo.spessore
             self.vista_libro.colore_penna = dialogo.colore
             self.vista_libro.usa_pressione_penna = dialogo.usa_pressione
+        self.vista_libro.clearFocus()
+        self.vista_libro.setFocus()
 
     def imposta_evidenziatore(self):
         dialogo = DialogoImpostazioniStrumenti("Impostazioni Evidenziatore", self.vista_libro.spessore_evidenziatore, self.vista_libro.colore_evidenziatore, self.vista_libro.usa_pressione_evid, True, self)
@@ -881,15 +1181,19 @@ class AppLibri(QMainWindow):
             self.vista_libro.spessore_evidenziatore = dialogo.spessore
             self.vista_libro.colore_evidenziatore = dialogo.colore
             self.vista_libro.usa_pressione_evid = dialogo.usa_pressione
+        self.vista_libro.clearFocus()
+        self.vista_libro.setFocus()
 
     def imposta_gomma(self):
         dialogo = DialogoImpostazioniStrumenti("Spessore Gomma", self.vista_libro.spessore_gomma, None, False, False, self)
         if dialogo.exec():
             self.vista_libro.spessore_gomma = dialogo.spessore
+        self.vista_libro.clearFocus()
+        self.vista_libro.setFocus()
 
     def torna_al_menu(self):
         self.aggiorna_ram_se_modificate()
-        self.storico_pagine[self.cartella_corrente] = self.indice_pagina_attuale
+        self.salva_stato_libro_corrente()
         self.salva_storico()
         self.cache_pagine.clear()
         
