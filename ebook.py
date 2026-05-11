@@ -8,12 +8,44 @@ from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
 from PyQt6.QtCore import *
 
-# Prova a importare la libreria per convertire i PDF
 try:
     from pdf2image import convert_from_path, pdfinfo_from_path
     HAS_PDF2IMAGE = True
 except ImportError:
     HAS_PDF2IMAGE = False
+
+# --- GESTIONE DEI THREAD IN BACKGROUND ---
+class WorkerSalvataggio(QRunnable):
+    def __init__(self, img, percorso):
+        super().__init__()
+        self.img = img
+        self.percorso = percorso
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            cartella = os.path.dirname(self.percorso)
+            if not os.path.exists(cartella):
+                os.makedirs(cartella, exist_ok=True)
+                if os.name == 'nt':
+                    ctypes.windll.kernel32.SetFileAttributesW(cartella, 0x02)
+            self.img.save(self.percorso, "PNG")
+        except:
+            pass
+
+class WorkerSegnali(QObject):
+    finito = pyqtSignal(str, QImage)
+
+class WorkerCaricamento(QRunnable):
+    def __init__(self, percorso):
+        super().__init__()
+        self.percorso = percorso
+        self.segnali = WorkerSegnali()
+
+    @pyqtSlot()
+    def run(self):
+        img = QImage(self.percorso)
+        self.segnali.finito.emit(self.percorso, img)
 
 # --- DIZIONARIO MULTILINGUA ---
 CURRENT_LANG = "it"
@@ -175,20 +207,16 @@ def tr(chiave):
     return STRINGS.get(CURRENT_LANG, STRINGS["it"]).get(chiave, chiave)
 
 def ordina_naturale(testo):
-    # Riconosce il meno SOLO se è all'inizio della stringa per i file come "-3.png"
     return [int(c) if re.match(r'^-?\d+$', c) else c.lower() for c in re.split(r'(^-?\d+|\d+)', testo)]
 
 def numero_da_nome(nome_file):
-    # Se il file si chiama letteralmente "-3.png"
     if re.match(r'^-\d+\.', nome_file):
         match = re.search(r'^-\d+', nome_file)
         if match: return match.group(0)
-    
     numeri = re.findall(r'\d+', nome_file)
     if numeri: return str(int(numeri[-1]))
     return "?"
 
-# --- CARTA DEL LIBRO ---
 class CartaLibro(QWidget):
     def __init__(self, nome, percorso, apri_callback):
         super().__init__()
@@ -248,7 +276,6 @@ class CartaLibro(QWidget):
             shutil.copy(file_path, nuovo_percorso)
             self.aggiorna_aspetto()
 
-# --- FINESTRA DI DIALOGO PER STRUMENTI PENNA ---
 class DialogoImpostazioniStrumenti(QDialog):
     def __init__(self, titolo, spessore, colore=None, usa_pressione=False, mostra_pressione=False, parent=None):
         super().__init__(parent)
@@ -324,10 +351,8 @@ class DialogoImpostazioniStrumenti(QDialog):
                 nuova_opacita = int((self.colore.alpha() / 255) * 100)
                 self.slider_opacita.setValue(nuova_opacita)
                 self.lbl_opacita.setText(f"{tr('opacita')}: {nuova_opacita}%")
-            
             self.aggiorna_bottone_colore()
 
-# --- FINESTRA DI DIALOGO IMPOSTAZIONI APP ---
 class DialogoImpostazioniApp(QDialog):
     def __init__(self, main_app):
         super().__init__(main_app)
@@ -570,14 +595,12 @@ class DialogoImpostazioniApp(QDialog):
             else:
                 QMessageBox.information(self, tr("fatto"), tr("export_successo"))
 
-# --- BOTTONE DOPPIO CLIC ---
 class BottoneStrumento(QPushButton):
     doppio_clic = pyqtSignal()
     def mouseDoubleClickEvent(self, evento):
         self.doppio_clic.emit()
         super().mouseDoubleClickEvent(evento)
 
-# --- VISUALIZZATORE VETTORIALE ---
 class PaginaView(QGraphicsView):
     richiesta_toggle_strumento = pyqtSignal()
     richiesta_cambio_pagina = pyqtSignal(int)
@@ -591,9 +614,7 @@ class PaginaView(QGraphicsView):
         self.setOptimizationFlag(QGraphicsView.OptimizationFlag.DontAdjustForAntialiasing, True)
         self.setOptimizationFlag(QGraphicsView.OptimizationFlag.DontSavePainterState, True)
         
-        self.immagine_corrente = None
         self.layer_disegno = None 
-        self.item_sfondo = None
         self.item_layer = None
         self.modificata = False
         
@@ -625,13 +646,12 @@ class PaginaView(QGraphicsView):
         self.tratti_temporanei_items = []
         
         self.update_gomma_in_attesa = False
-        
         self.adattato_in_larghezza = False
         self.pos_mouse_iniziale = None
         self.scroll_x_iniziale = 0
 
     def adatta_in_altezza(self):
-        if self.immagine_corrente:
+        if not self.scena.sceneRect().isEmpty():
             self.fitInView(self.scena.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
             self.adattato_in_larghezza = False
 
@@ -644,7 +664,6 @@ class PaginaView(QGraphicsView):
         self.is_doppia = perc_dx is not None
 
         if not perc_sx and not perc_dx:
-            self.immagine_corrente = None
             self.layer_disegno = None
             self.modificata = False
             return
@@ -660,16 +679,14 @@ class PaginaView(QGraphicsView):
         h_max = max(h_sx, h_dx)
         w_tot = w_sx + w_dx if self.is_doppia else w_sx
         
-        comp_base = QImage(w_tot, h_max, QImage.Format.Format_RGB888)
-        comp_base.fill(Qt.GlobalColor.white)
-        p_base = QPainter(comp_base)
-        if pix_sx: p_base.drawPixmap(0, 0, pix_sx)
-        if pix_dx: p_base.drawPixmap(w_sx, 0, pix_dx)
-        p_base.end()
-        
-        self.immagine_corrente = QPixmap.fromImage(comp_base)
-        self.item_sfondo = self.scena.addPixmap(self.immagine_corrente)
-        self.item_sfondo.setZValue(-1) 
+        if pix_sx:
+            item_sx = self.scena.addPixmap(pix_sx)
+            item_sx.setPos(0, 0)
+            item_sx.setZValue(-1)
+        if pix_dx:
+            item_dx = self.scena.addPixmap(pix_dx)
+            item_dx.setPos(w_sx, 0)
+            item_dx.setZValue(-1)
 
         self.layer_disegno = QPixmap(w_tot, h_max)
         self.layer_disegno.fill(Qt.GlobalColor.transparent)
@@ -678,12 +695,17 @@ class PaginaView(QGraphicsView):
         
         def load_layer(perc, offset_x):
             if perc:
-                cartella = os.path.dirname(perc)
-                nome = os.path.basename(perc)
-                perc_edit = os.path.join(cartella, ".edit", os.path.splitext(nome)[0] + ".png")
-                if os.path.exists(perc_edit):
-                    pix_edit = QPixmap(perc_edit)
-                    p_layer.drawPixmap(offset_x, 0, pix_edit)
+                if hasattr(self, 'cache_layer') and perc in self.cache_layer:
+                    p_layer.drawPixmap(offset_x, 0, self.cache_layer[perc])
+                else:
+                    cartella = os.path.dirname(perc)
+                    nome = os.path.basename(perc)
+                    perc_edit = os.path.join(cartella, ".edit", os.path.splitext(nome)[0] + ".png")
+                    if os.path.exists(perc_edit):
+                        pix_edit = QPixmap(perc_edit)
+                        p_layer.drawPixmap(offset_x, 0, pix_edit)
+                        if hasattr(self, 'cache_layer'):
+                            self.cache_layer[perc] = pix_edit
                     
         load_layer(perc_sx, 0)
         if self.is_doppia:
@@ -694,35 +716,38 @@ class PaginaView(QGraphicsView):
         self.item_layer = self.scena.addPixmap(self.layer_disegno)
         self.item_layer.setZValue(1)
 
-        self.setSceneRect(QRectF(comp_base.rect()))
+        self.setSceneRect(QRectF(0, 0, w_tot, h_max))
         self.modificata = False
 
     def salva_modifiche(self):
         if self.modificata and self.layer_disegno:
+            
+            if hasattr(self, 'cache_layer'):
+                if self.is_doppia:
+                    if self.percorso_sx: self.cache_layer[self.percorso_sx] = self.layer_disegno.copy(0, 0, self.size_sx.width(), self.size_sx.height())
+                    if self.percorso_dx: self.cache_layer[self.percorso_dx] = self.layer_disegno.copy(self.size_sx.width(), 0, self.size_dx.width(), self.size_dx.height())
+                else:
+                    if self.percorso_sx: self.cache_layer[self.percorso_sx] = self.layer_disegno.copy()
+
             img_layer = self.layer_disegno.toImage()
             
-            def salva_layer(img_taglio, perc_orig):
+            def dispatch_save(img_taglio, perc_orig):
                 if perc_orig:
                     cartella = os.path.dirname(perc_orig)
                     cartella_edit = os.path.join(cartella, ".edit")
-                    
-                    if not os.path.exists(cartella_edit):
-                        os.makedirs(cartella_edit, exist_ok=True)
-                        if os.name == 'nt':
-                            FILE_ATTRIBUTE_HIDDEN = 0x02
-                            ctypes.windll.kernel32.SetFileAttributesW(cartella_edit, FILE_ATTRIBUTE_HIDDEN)
-                            
                     nome = os.path.basename(perc_orig)
                     perc_edit = os.path.join(cartella_edit, os.path.splitext(nome)[0] + ".png")
-                    img_taglio.save(perc_edit, "PNG")
+                    
+                    worker = WorkerSalvataggio(img_taglio, perc_edit)
+                    QThreadPool.globalInstance().start(worker)
 
             if self.is_doppia:
                 img_sx = img_layer.copy(0, 0, self.size_sx.width(), self.size_sx.height())
-                salva_layer(img_sx, self.percorso_sx)
+                dispatch_save(img_sx, self.percorso_sx)
                 img_dx = img_layer.copy(self.size_sx.width(), 0, self.size_dx.width(), self.size_dx.height())
-                salva_layer(img_dx, self.percorso_dx)
+                dispatch_save(img_dx, self.percorso_dx)
             else:
-                salva_layer(img_layer, self.percorso_sx)
+                dispatch_save(img_layer, self.percorso_sx)
             
             self.modificata = False
 
@@ -752,14 +777,14 @@ class PaginaView(QGraphicsView):
         return super().event(evento)
 
     def mouseDoubleClickEvent(self, evento):
-        if self.immagine_corrente:
+        if not self.sceneRect().isEmpty():
             punto_scena = self.mapToScene(evento.pos())
             
             if self.adattato_in_larghezza:
                 self.fitInView(self.scena.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
                 self.adattato_in_larghezza = False
             else:
-                scala = self.viewport().width() / self.immagine_corrente.width()
+                scala = self.viewport().width() / self.sceneRect().width()
                 self.resetTransform()
                 self.scale(scala, scala)
                 self.centerOn(punto_scena) 
@@ -924,6 +949,8 @@ class AppLibri(QMainWindow):
         self.storico_pagine = {}
         self.carica_storico()
         
+        self.cache_layer = {}
+        
         self.setWindowTitle(tr("titolo_app"))
         self.resize(1200, 800)
         
@@ -940,6 +967,8 @@ class AppLibri(QMainWindow):
 
         self.crea_menu()
         self.crea_lettore()
+        
+        self.vista_libro.cache_layer = self.cache_layer
         self.applica_tema()
 
     def carica_config(self):
@@ -1124,7 +1153,6 @@ class AppLibri(QMainWindow):
         dpi_scelto, ok = QInputDialog.getInt(self, "DPI", tr("scegli_dpi"), 650, 100, 1000, 50)
         if not ok: return
 
-        # --- NUOVA OPZIONE: Scelta del numero di partenza ---
         inizio_pag, ok = QInputDialog.getInt(self, "Pagina Iniziale", tr("scegli_inizio_pagina"), 1, -10000, 10000, 1)
         if not ok: return
 
@@ -1157,7 +1185,6 @@ class AppLibri(QMainWindow):
 
                 pagine = convert_from_path(percorso_completo, first_page=i, last_page=i, dpi=dpi_scelto)
                 if pagine:
-                    # Calcola il numero effettivo di salvataggio (anche negativo)
                     numero_pagina_corrente = inizio_pag + (i - 1)
                     nome_immagine = f"{numero_pagina_corrente}.png"
                     
@@ -1231,7 +1258,15 @@ class AppLibri(QMainWindow):
         self.widget_lettore.setObjectName("sfondo_lettore")
         layout_principale = QVBoxLayout(self.widget_lettore)
         
-        self.barra_alta = QHBoxLayout()
+        # --- FIX: GRIGLIA MATEMATICA PER CENTRARE I BOTTONI IN ALTO ---
+        self.barra_alta = QGridLayout()
+        self.barra_alta.setContentsMargins(0, 0, 0, 0)
+        
+        # Lato Sinistro (Strumenti Penna)
+        widget_sx = QWidget()
+        layout_sx = QHBoxLayout(widget_sx)
+        layout_sx.setContentsMargins(0, 0, 0, 0)
+        
         self.btn_penna = BottoneStrumento()
         self.btn_penna.setCheckable(True)
         self.btn_penna.setChecked(True)
@@ -1248,15 +1283,52 @@ class AppLibri(QMainWindow):
         self.btn_gomma.clicked.connect(lambda: self.imposta_strumento("gomma"))
         self.btn_gomma.doppio_clic.connect(self.imposta_gomma)
 
+        layout_sx.addWidget(self.btn_penna)
+        layout_sx.addWidget(self.btn_evid)
+        layout_sx.addWidget(self.btn_gomma)
+        layout_sx.addStretch()
+
+        # Lato Centrale (Nuove frecce Fullscreen centrate matematicamente)
+        widget_centro = QWidget()
+        layout_centro = QHBoxLayout(widget_centro)
+        layout_centro.setContentsMargins(0, 0, 0, 0)
+        
+        self.btn_nav_indietro = QPushButton("←")
+        self.btn_nav_indietro.setFixedSize(60, 40)
+        self.btn_nav_indietro.clicked.connect(self.pagina_indietro)
+        self.btn_nav_indietro.hide()
+
+        self.btn_nav_avanti = QPushButton("→")
+        self.btn_nav_avanti.setFixedSize(60, 40)
+        self.btn_nav_avanti.clicked.connect(self.pagina_avanti)
+        self.btn_nav_avanti.hide()
+
+        layout_centro.addWidget(self.btn_nav_indietro)
+        layout_centro.addWidget(self.btn_nav_avanti)
+        layout_centro.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Lato Destro (Tasto Fullscreen)
+        widget_dx = QWidget()
+        layout_dx = QHBoxLayout(widget_dx)
+        layout_dx.setContentsMargins(0, 0, 0, 0)
+        
         self.btn_fullscreen_top = QPushButton()
         self.btn_fullscreen_top.setFixedSize(160, 40)
         self.btn_fullscreen_top.clicked.connect(self.toggle_fullscreen)
 
-        self.barra_alta.addWidget(self.btn_penna)
-        self.barra_alta.addWidget(self.btn_evid)
-        self.barra_alta.addWidget(self.btn_gomma)
-        self.barra_alta.addStretch()
-        self.barra_alta.addWidget(self.btn_fullscreen_top)
+        layout_dx.addStretch()
+        layout_dx.addWidget(self.btn_fullscreen_top)
+
+        # Montaggio della griglia
+        self.barra_alta.addWidget(widget_sx, 0, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.barra_alta.addWidget(widget_centro, 0, 1, Qt.AlignmentFlag.AlignCenter)
+        self.barra_alta.addWidget(widget_dx, 0, 2, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        
+        # Forza la colonna centrale a essere perfettamente a metà finestra
+        self.barra_alta.setColumnStretch(0, 1)
+        self.barra_alta.setColumnStretch(1, 0)
+        self.barra_alta.setColumnStretch(2, 1)
+        # --------------------------------------------------------------
 
         centro = QHBoxLayout()
         self.vista_libro = PaginaView()
@@ -1337,17 +1409,26 @@ class AppLibri(QMainWindow):
             self.widget_basso.show()
             self.btn_nascondi.show()
             self.btn_swipe.show() 
+            self.btn_nav_indietro.hide()
+            self.btn_nav_avanti.hide()
         else:
             self.showFullScreen()
             self.btn_fullscreen_top.setText(tr("riduci_schermo"))
             self.widget_basso.hide()
             self.btn_nascondi.hide()
             self.btn_swipe.hide() 
+            self.btn_nav_indietro.show()
+            self.btn_nav_avanti.show()
 
     def gestisci_swipe(self, direzione):
         if not self.swipe_abilitato: return
         if direzione == 1: self.pagina_avanti()
         elif direzione == -1: self.pagina_indietro()
+
+    def immagine_caricata(self, percorso, img):
+        if percorso not in self.cache_pagine:
+            self.cache_pagine[percorso] = QPixmap.fromImage(img)
+        self.carica_prossima_in_coda()
 
     def ottieni_da_cache(self, percorso):
         if percorso not in self.cache_pagine:
@@ -1360,6 +1441,7 @@ class AppLibri(QMainWindow):
         self.cartella_corrente = percorso
         if not self.pagine_libro: return
         self.cache_pagine.clear()
+        self.cache_layer.clear() 
         
         book_data = self.storico_pagine.get(percorso, {})
         indice_salvato = book_data.get("pagina", 0) if isinstance(book_data, dict) else 0
@@ -1382,6 +1464,20 @@ class AppLibri(QMainWindow):
         self.vista_libro.spessore_gomma = g_data.get("spessore", 40)
 
         self.schermate.setCurrentIndex(1)
+        
+        if not self.isFullScreen():
+            self.widget_basso.show()
+            self.btn_nascondi.show()
+            self.btn_swipe.show()
+            self.btn_nav_indietro.hide()
+            self.btn_nav_avanti.hide()
+        else:
+            self.btn_nav_indietro.show()
+            self.btn_nav_avanti.show()
+        
+        self.widget_lettore.layout().invalidate()
+        QApplication.processEvents()
+
         self.aggiorna_pagine()
         QTimer.singleShot(100, self.adatta_pagine_iniziali)
 
@@ -1390,19 +1486,7 @@ class AppLibri(QMainWindow):
 
     def aggiorna_ram_se_modificate(self):
         if self.vista_libro.modificata: 
-            perc_sx = self.vista_libro.percorso_sx
-            perc_dx = self.vista_libro.percorso_dx
-            
             self.vista_libro.salva_modifiche()
-            
-            if perc_sx:
-                if perc_sx in self.cache_pagine: del self.cache_pagine[perc_sx]
-                QPixmapCache.clear() 
-                self.cache_pagine[perc_sx] = QPixmap(perc_sx)
-            if perc_dx:
-                if perc_dx in self.cache_pagine: del self.cache_pagine[perc_dx]
-                QPixmapCache.clear() 
-                self.cache_pagine[perc_dx] = QPixmap(perc_dx)
 
     def aggiorna_pagine(self):
         if not self.pagine_libro: return
@@ -1432,11 +1516,12 @@ class AppLibri(QMainWindow):
                     self.vista_libro.carica_immagini(percorso_sx, self.ottieni_da_cache(percorso_sx), None, None)
                     self.input_pag.setText(numero_da_nome(self.pagine_libro[indice_sx]))
 
-        QTimer.singleShot(50, self.precarica_pagine_vicine)
+        QTimer.singleShot(10, self.precarica_pagine_vicine)
 
     def precarica_pagine_vicine(self):
-        inizio = max(0, self.indice_pagina_attuale - 3)
-        fine = min(len(self.pagine_libro), self.indice_pagina_attuale + 4)
+        raggio = 10
+        inizio = max(0, self.indice_pagina_attuale - raggio)
+        fine = min(len(self.pagine_libro), self.indice_pagina_attuale + raggio + 1)
         
         percorsi_utili = []
         for i in range(inizio, fine):
@@ -1445,16 +1530,24 @@ class AppLibri(QMainWindow):
         da_cancellare = [p for p in self.cache_pagine if p not in percorsi_utili]
         for p in da_cancellare:
             del self.cache_pagine[p]
+            if p in self.cache_layer:
+                del self.cache_layer[p]
             
-        self.coda_precaricamento = [p for p in percorsi_utili if p not in self.cache_pagine]
+        mancanti = [p for p in percorsi_utili if p not in self.cache_pagine]
+        mancanti.sort(key=lambda p: abs(self.pagine_libro.index(os.path.basename(p)) - self.indice_pagina_attuale))
+        
+        self.coda_precaricamento = mancanti
         self.carica_prossima_in_coda()
 
     def carica_prossima_in_coda(self):
         if hasattr(self, 'coda_precaricamento') and self.coda_precaricamento:
             percorso = self.coda_precaricamento.pop(0)
             if percorso not in self.cache_pagine:
-                self.cache_pagine[percorso] = QPixmap(percorso)
-            QTimer.singleShot(50, self.carica_prossima_in_coda)
+                worker = WorkerCaricamento(percorso)
+                worker.segnali.finito.connect(self.immagine_caricata)
+                QThreadPool.globalInstance().start(worker)
+            else:
+                self.carica_prossima_in_coda()
 
     def pagina_avanti(self):
         self.aggiorna_ram_se_modificate()
@@ -1530,6 +1623,7 @@ class AppLibri(QMainWindow):
         self.salva_stato_libro_corrente()
         self.salva_storico()
         self.cache_pagine.clear()
+        self.cache_layer.clear()
         
         if self.isFullScreen():
             self.toggle_fullscreen()
